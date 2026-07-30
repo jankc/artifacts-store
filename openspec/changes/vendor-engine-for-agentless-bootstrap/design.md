@@ -166,6 +166,42 @@ per-machine install step, needs its own refresh mechanism, and would need a Wind
 answer of its own. Vendoring into the common dir achieves the same result with no
 install step and no PATH — one `cp` at `init` replaces the entire verb.
 
+### B8 — Fold the dual-runtime layout into this change
+
+Decided with Jan on 2026-07-30: the future home of this plugin is the ai-marketplace
+repo, whose `NAMING-CONVENTIONS.md` hard rule 2 requires `skills/<name>/SKILL.md` —
+a root `SKILL.md` is an auditor ERROR and is not loaded by Codex at all. The move is
+pure restructuring with no behavior change in Claude Code (verified fact in
+docs/CONTEXT.md §5: Claude accepts both shapes), so it rides along with this change's
+documentation work rather than getting a change of its own. This supersedes the base
+design's D8 layout sketch (root `SKILL.md`); the follow-up `add-codex-runtime-support`
+change builds on this layout and carries all Codex *behavior*.
+
+Concretely:
+
+- `SKILL.md` → `skills/lnd-artifacts/SKILL.md` (frontmatter unchanged).
+- `.codex-plugin/plugin.json` added, mirroring `.claude-plugin/plugin.json` (same
+  `name`/`version`/`description`/`author`) plus an `interface` block modeled on
+  `lnd-quick-commit` in the ai-marketplace repo (`displayName`, `shortDescription`,
+  `longDescription`, `developerName`, `category: "Engineering"`, `defaultPrompt`).
+- Both manifests declare `"skills": "./skills/"` explicitly, the way `lnd-core` does,
+  rather than relying on directory auto-discovery.
+- The two manifests must stay in version lockstep; `heal`'s B3 drift check reads the
+  engine's `VERSION=`, so the engine remains the single source of truth for behavior —
+  manifest versions are packaging metadata that follow it.
+
+### B9 — Risk: skills-dir installs must survive the move
+
+Jan's live install goes `~/.claude*/skills/lnd-artifacts → ~/.agents/skills/lnd-artifacts
+→ this checkout`, relying on the documented skills-dir auto-load (`<name>@skills-dir`).
+Today that entry finds a root `SKILL.md`; after the move it must be picked up as a
+*plugin directory* containing `skills/lnd-artifacts/SKILL.md`. Verify both load paths
+after the move — `claude --plugin-dir <repo>` and the skills-dir hop — and record the
+result in docs/CONTEXT.md §5. If the skills-dir auto-load turns out not to descend into
+`skills/`, the fallback is repointing the `~/.claude*/skills/lnd-artifacts` links one
+level deeper (at `<checkout>/skills/lnd-artifacts`), which keeps the hop scheme intact —
+but hooks would then no longer ride along, so record whichever shape actually works.
+
 ## Evidence
 
 All of the following was verified on disposable fixtures during the 2026-07-30 session,

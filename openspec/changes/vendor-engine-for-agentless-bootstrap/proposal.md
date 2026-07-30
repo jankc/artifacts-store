@@ -43,6 +43,19 @@ depend on. A worktree-init command then names nothing about where the plugin liv
 
 - No new verb, no user-facing install step, no PATH assumption.
 
+Additionally, this change carries the repo-layout half of dual-runtime packaging, folded
+in here so the repository is restructured exactly once (the Codex-behavior half is the
+separate `add-codex-runtime-support` change, which builds on this layout):
+
+- The root `SKILL.md` SHALL move to `skills/lnd-artifacts/SKILL.md`. The marketplace's
+  naming conventions require this shape (root `SKILL.md` is an auditor ERROR), and Codex
+  only loads skills from `skills/<name>/SKILL.md`. Claude Code accepts both shapes, so
+  nothing changes for Claude sessions.
+- A `.codex-plugin/plugin.json` mirror manifest SHALL be added alongside
+  `.claude-plugin/plugin.json`, following the shape of `lnd-quick-commit` in the
+  ai-marketplace repo (same name/version/description plus an `interface` block). Both
+  manifests SHALL declare the skills directory and stay in version lockstep.
+
 ## Capabilities
 
 ### New Capabilities
@@ -55,6 +68,8 @@ depend on. A worktree-init command then names nothing about where the plugin liv
 - `artifact-store`: `init` gains the vendoring step; `detach` (specified in
   `artifact-linking`) gains the removal step.
 - `artifact-sync`: `status` additionally reports the vendored engine.
+- `plugin-integration`: the skill moves to the `skills/<name>/SKILL.md` layout and the
+  plugin gains a Codex mirror manifest (delta in `specs/plugin-integration/spec.md`).
 
 ## Impact
 
@@ -65,6 +80,9 @@ depend on. A worktree-init command then names nothing about where the plugin liv
   without Codex packaging existing.
 - Removes the need for the `install-cli` / PATH-copy approach that was considered and
   rejected (see design.md).
+- The repo layout becomes marketplace-convention-compliant and Codex-loadable; the only
+  observable difference in Claude Code is the skill's path inside the plugin. Existing
+  `~/.claude*/skills/` symlink installs must be re-verified after the move (see B9).
 
 ## Out of Scope
 

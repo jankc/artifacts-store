@@ -7,6 +7,10 @@
 # root except .git is symlinked into the current worktree root and ignored via a
 # marker-delimited block in <git-common-dir>/info/exclude.
 #
+# `init` and `heal` also keep a runnable copy of this script beside the store, at
+# <git-common-dir>/lundegaard.engine.sh, so worktree-init tooling can bootstrap a
+# new worktree without knowing where the plugin is installed.
+#
 # This script NEVER mutates the host repository: no commits, no staging, no
 # config writes. It only touches the store, the symlinks, and the exclude block.
 #
@@ -16,6 +20,14 @@ set -eu
 
 PROG=lnd-artifacts
 VERSION=0.1.0
+
+# Absolute path of the running script, captured before anything can change the
+# working directory: it is the source of the vendored copy (B1/B2).
+SELF=$0
+case $SELF in
+    /*) ;;
+    *) SELF="$PWD/$SELF" ;;
+esac
 
 # --- globals ---------------------------------------------------------------
 
@@ -29,6 +41,7 @@ STORE=""
 EXCLUDE_FILE=""
 WT_ROOT=""
 LOCK_DIR=""
+VENDORED_ENGINE=""
 LOCK_HELD=0
 INIT_PARTIAL=0
 
@@ -201,6 +214,10 @@ resolve_repo() {
     # commit -A. The common dir is shared by every worktree of the clone, so the
     # lock still serializes them all (D5's actual requirement).
     LOCK_DIR="$COMMON_DIR/lundegaard.lock"
+    # Same reasoning for the vendored engine: a sibling of the store, never a
+    # store-root entry. The common dir is the one location every worktree of the
+    # clone can name with `git rev-parse --git-common-dir` (B1).
+    VENDORED_ENGINE="$COMMON_DIR/lundegaard.engine.sh"
     WT_ROOT=$(git rev-parse --show-toplevel)
     WT_ROOT=$(cd "$WT_ROOT" && pwd -P) ||
         die "cannot resolve the worktree root"
@@ -515,6 +532,51 @@ unlink_managed() {
     return 0
 }
 
+# --- vendored engine (artifact-bootstrap) ----------------------------------
+
+# vendored_version — the VERSION of the vendored copy, read as text. Never
+# executes the copy: a corrupt one must still be replaceable (B3).
+vendored_version() {
+    if [ ! -f "$VENDORED_ENGINE" ]; then return 0; fi
+    sed -n 's/^VERSION=//p' "$VENDORED_ENGINE" 2>/dev/null | sed -n '1p'
+}
+
+# write_vendored — copy the running engine over the vendored path atomically, so
+# a concurrent worktree-init never sees a half-written script.
+write_vendored() {
+    wv_tmp="$VENDORED_ENGINE.lnd-tmp.$$"
+    cp "$SELF" "$wv_tmp"
+    chmod 755 "$wv_tmp"
+    mv "$wv_tmp" "$VENDORED_ENGINE"
+}
+
+# ensure_vendored — create the vendored copy when missing, refresh it when its
+# version differs from ours (upgrade or downgrade), otherwise change nothing.
+ensure_vendored() {
+    if [ ! -r "$SELF" ]; then
+        warn "cannot vendor the engine: this script is not readable at $SELF"
+        return 0
+    fi
+    if [ -e "$VENDORED_ENGINE" ] && [ ! -f "$VENDORED_ENGINE" ]; then
+        warn "not vendoring the engine: $VENDORED_ENGINE exists and is not a regular file"
+        return 0
+    fi
+    if [ -f "$VENDORED_ENGINE" ] && [ -x "$VENDORED_ENGINE" ]; then
+        ev_have=$(vendored_version)
+        if [ "$ev_have" = "$VERSION" ]; then return 0; fi
+        report "refresh the vendored engine at $VENDORED_ENGINE (${ev_have:-unreadable version} -> $VERSION)"
+    else
+        report "vendor the engine $VERSION to $VENDORED_ENGINE"
+    fi
+    dry || write_vendored
+}
+
+remove_vendored() {
+    if [ ! -e "$VENDORED_ENGINE" ] && [ ! -L "$VENDORED_ENGINE" ]; then return 0; fi
+    report "remove the vendored engine at $VENDORED_ENGINE"
+    dry || rm -f "$VENDORED_ENGINE"
+}
+
 # --- heal (3.2) ------------------------------------------------------------
 
 do_heal() {
@@ -553,6 +615,7 @@ do_heal() {
     fi
 
     sync_exclude "$dh_entries"
+    ensure_vendored
 }
 
 heal_summary() {
@@ -595,6 +658,7 @@ cmd_init() {
         report "clone $ci_url -> $STORE"
         report "link every post-clone first-level store entry (except .git) into $WT_ROOT"
         report "generate the managed block in $EXCLUDE_FILE from that store listing"
+        report "vendor the engine $VERSION to $VENDORED_ENGINE"
         release_lock
         say "$PROG: $CHANGED change(s) planned (dry run, nothing written)"
         return 0
@@ -908,6 +972,17 @@ cmd_status() {
         return 0
     fi
 
+    if [ ! -f "$VENDORED_ENGINE" ] || [ ! -x "$VENDORED_ENGINE" ]; then
+        say "  engine   : not vendored at $VENDORED_ENGINE -> run '$PROG heal' to restore it"
+    else
+        ct_vend=$(vendored_version)
+        if [ "$ct_vend" = "$VERSION" ]; then
+            say "  engine   : vendored $ct_vend at $VENDORED_ENGINE"
+        else
+            say "  engine   : vendored ${ct_vend:-unreadable version} at $VENDORED_ENGINE differs from the running $VERSION -> run '$PROG heal' to refresh"
+        fi
+    fi
+
     ct_dirty=$(store_dirty_count)
     ct_up=$(store_upstream)
     ct_branch=$(store_branch)
@@ -1066,8 +1141,15 @@ cmd_detach() {
         dt_names=$(store_entries)
     fi
     if [ -z "$dt_names" ]; then
+        remove_vendored
         release_lock
-        say "$PROG: nothing managed here — no links or exclude block to remove"
+        if [ "$CHANGED" -eq 0 ]; then
+            say "$PROG: nothing managed here — no links or exclude block to remove"
+        elif dry; then
+            say "$PROG: $CHANGED change(s) planned (dry run, nothing written)"
+        else
+            say "$PROG: detached — $CHANGED change(s); the store at $STORE is untouched ('$PROG heal' restores everything)"
+        fi
         return 0
     fi
 
@@ -1100,6 +1182,7 @@ cmd_detach() {
     fi
 
     sync_exclude ""
+    remove_vendored
 
     release_lock
 

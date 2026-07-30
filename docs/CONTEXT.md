@@ -107,7 +107,9 @@ Design.md D1–D8 are the settled decisions. Extra rationale worth preserving:
   elsewhere on disk. Validation always compares RESOLVED targets, not link text.
 - **No Windows support initially**: ailien's junction/hardlink dance is out of scope.
 
-## 5. Verified Claude Code plugin facts (checked 2026-07-30 against docs)
+## 5. Verified runtime facts
+
+### 5a. Claude Code plugin facts (checked 2026-07-30 against docs)
 
 - `claude --plugin-dir <path>` loads a plugin from a local directory, session-only,
   repeatable flag; local copy shadows a same-named marketplace plugin for the session.
@@ -117,7 +119,22 @@ Design.md D1–D8 are the settled decisions. Extra rationale worth preserving:
   lives under `.claude-plugin/`; all component dirs (`skills/`, `commands/`, `hooks/`,
   `scripts/`, …) sit at the plugin root.
 - A single-skill plugin may place `SKILL.md` directly at the plugin root (invocation
-  name via frontmatter `name:`).
+  name via frontmatter `name:`). This repo no longer does — it moved to
+  `skills/lnd-artifacts/SKILL.md` (B8), which both runtimes accept.
+- **Verified 2026-07-30, after the B8 layout move** (headless `claude -p` probes, run
+  from `/tmp`, i.e. outside the checkout):
+  - `claude -p '…' --plugin-dir <checkout>` → the skill is available (answered "Yes").
+  - **Skills-dir hop still resolves.** With no `--plugin-dir` at all, the chain
+    `~/.claude/skills/lnd-artifacts → ~/.agents/skills/lnd-artifacts → <checkout>` loads
+    the plugin as `lnd-artifacts@skills-dir` and descends into `skills/lnd-artifacts/`:
+    a probe asked the skill for its worktree-init one-liner and quoted the line that only
+    exists in the moved `skills/lnd-artifacts/SKILL.md`. The B9 fallback (repointing the
+    symlinks one level deeper) was NOT needed.
+  - **Hooks ride along on that path.** In a scratch project with a store and a deleted
+    `.claude` link, a session started with no `--plugin-dir` reported the SessionStart
+    hook's `additionalContext` ("lnd-artifacts (SessionStart heal): link .claude -> …")
+    and the link was restored — so `hooks/hooks.json` is loaded through the skills-dir
+    install too, with `${CLAUDE_PLUGIN_ROOT}` resolving to the checkout root.
 - Plugin hooks go in `hooks/hooks.json` with the same schema and event types as user
   settings hooks (SessionStart, Stop, …); reference scripts via
   `${CLAUDE_PLUGIN_ROOT}`. Plugin hooks and user hooks merge; both run.
@@ -126,6 +143,48 @@ Design.md D1–D8 are the settled decisions. Extra rationale worth preserving:
 - Docs: https://code.claude.com/docs/en/plugins.md ,
   https://code.claude.com/docs/en/plugins-reference.md ,
   https://code.claude.com/docs/en/hooks.md
+
+### 5b. Codex facts (checked 2026-07-30 against `codex-cli 0.146.0`, macOS)
+
+Gathered empirically while implementing `add-codex-runtime-support` (C3): `codex --help`,
+`codex plugin --help`, `codex doctor`, strings of the shipped binary, and four
+`codex exec` probes.
+
+- **User-level skills directory: `$CODEX_HOME/skills`, defaulting to `~/.codex/skills`.**
+  Codex's own bundled `skill-installer`/`skill-creator` skills state it verbatim
+  ("Installs into `$CODEX_HOME/skills/<skill-name>` (defaults to `~/.codex/skills`)"),
+  and it is where the built-in skills live (`~/.codex/skills/.system/`). Verified by
+  wiring a link there and observing the skill become available.
+- **Codex descends into a plugin's `skills/` dir.** The wiring used was the same hop
+  scheme as Claude: `~/.codex/skills/lnd-artifacts` → `~/.agents/skills/lnd-artifacts` →
+  `<checkout>` (the checkout *root*, which has no `SKILL.md`). A probe run from a fixture
+  under `/tmp` reported the absolute path it read as
+  `<checkout>/skills/lnd-artifacts/SKILL.md` and quoted the worktree-init one-liner and
+  the exact Rules count from it. So the C3 fallback (linking `skills/lnd-artifacts`
+  directly) was NOT needed — though it remains available and would work, the skill text
+  being self-contained.
+- **Project-level discovery is `.codex/skills/<name>/SKILL.md`** — pre-existing fact in
+  this repo (`.codex/skills/openspec-*` load in Codex sessions here).
+- **No skill-root or plugin-root environment variable.** A probe printing the session's
+  `env` showed only `CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED`, `CODEX_THREAD_ID`,
+  `CODEX_MANAGED_BY_NPM`, `CODEX_MANAGED_PACKAGE_ROOT`, `CODEX_CI`, and TUI logging vars —
+  nothing pointing at the loaded skill. Skill locations are injected into the prompt
+  instead, as a `## Skills` catalog with a `### Skill roots` alias table (`r0` → path).
+  This closes the design's open question: there is no Codex analogue of
+  `CLAUDE_PLUGIN_ROOT`, which is exactly why C1's step 2 (the vendored engine) is the
+  resolution mechanism outside Claude. `CLAUDE_PLUGIN_ROOT` itself is absent in a Codex
+  session, so C1's `${CLAUDE_PLUGIN_ROOT:+…}` test is a reliable runtime discriminator.
+- **Engine resolution verified end-to-end.** In a disposable fixture under `/tmp` (bare
+  "remote" + host repo + `init` + `adopt .claude`), `codex exec -C <fixture>` asked to
+  report artifact status via the skill answered with
+  `ENGINE=/tmp/…/host/.git/lundegaard.engine.sh` and the verbatim `status` output — i.e.
+  it took resolution step 2 (vendored copy), not the checkout script.
+- **Codex 0.146.0 does have a hook system** (`~/.codex/hooks.json` and project
+  `.codex/hooks.json`, with `session_start` / `user_prompt_submit` / `stop` /
+  `post_tool_use` events and per-hook trust hashes in `config.toml`). It is user- and
+  project-scoped, not something a *skill* carries, so it does not change C2 — the skill
+  cannot ship hooks the way the Claude plugin can. If Codex ever lets plugins declare
+  hooks, that is the follow-up the proposal explicitly left out of scope.
 
 ## 6. Reference paths
 

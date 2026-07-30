@@ -26,6 +26,8 @@ WT="$WORK/host-wt"
 REMOTE="$WORK/artifacts.git"
 SEED="$WORK/seed"
 STORE="$HOST/.git/lundegaard"
+VENDORED="$HOST/.git/lundegaard.engine.sh"
+VERSION=$(sh "$ENGINE" --version | awk '{print $NF}')
 
 PASS=0
 FAIL=0
@@ -98,6 +100,18 @@ is_link_to() { # is_link_to <link> <expected-target-path>
 }
 
 engine() { sh "$ENGINE" "$@"; }
+
+# The exact worktree-init invocation the README documents — plugin-free, guarded
+# so it is a silent no-op wherever there is no vendored engine.
+WORKTREE_INIT='E="$(git rev-parse --git-common-dir 2>/dev/null)/lundegaard.engine.sh"; [ -x "$E" ] && "$E" heal --quiet || true'
+
+worktree_init() { # worktree_init <cwd>
+    (cd "$1" && sh -c "$WORKTREE_INIT")
+}
+
+vendored_version() { # vendored_version <path>
+    sed -n 's/^VERSION=//p' "$1" | sed -n '1p'
+}
 
 wait_for_lock_waiters() { # wait_for_lock_waiters <log> <count>
     wf_log=$1
@@ -182,13 +196,14 @@ cd "$HOST"
 step "init --dry-run changes nothing"
 INIT_DRY=$(engine init "$REMOTE" --dry-run)
 case $INIT_DRY in
-    *"clone $REMOTE -> $STORE"*"post-clone first-level store entry"*"generate the managed block"*)
-        ok "dry-run init prints the no-network post-clone plan"
+    *"clone $REMOTE -> $STORE"*"post-clone first-level store entry"*"generate the managed block"*"vendor the engine $VERSION to $VENDORED"*)
+        ok "dry-run init prints the no-network post-clone plan, vendoring included"
         ;;
     *) bad "dry-run init plan is incomplete (got: $INIT_DRY)" ;;
 esac
 check_not "no store created by dry run" test -e "$STORE"
 check_not "no link created by dry run" test -L "$HOST/.claude"
+check_not "no engine vendored by dry run" test -e "$VENDORED"
 check "exclude bytes untouched by dry run" cmp -s "$WORK/exclude.before" "$HOST/.git/info/exclude"
 
 step "init clones and links"
@@ -205,6 +220,29 @@ eq "managed block matches the store listing" "$(printf '.claude\nCLAUDE.md\nopen
     "$(sed -n '/>>> lnd-artifacts managed >>>/,/<<< lnd-artifacts managed <<</p' "$HOST/.git/info/exclude" |
         grep '^/' | sed 's|^/||')"
 
+step "init vendors a runnable engine beside the store"
+check "vendored engine exists and is executable" test -x "$VENDORED"
+eq "vendored engine reports the running version" "$VERSION" "$(sh "$VENDORED" --version | awk '{print $NF}')"
+eq "vendored engine is byte-identical to the plugin's" "same" \
+    "$(cmp -s "$ENGINE" "$VENDORED" && echo same || echo different)"
+case "$(engine status)" in
+    *"engine   : vendored $VERSION at $VENDORED"*) ok "status reports the vendored engine" ;;
+    *) bad "status should report the vendored engine" ;;
+esac
+
+step "the vendored engine is not payload"
+PAYLOAD_BEFORE=$(ls -A "$STORE" | LC_ALL=C sort)
+engine heal >/dev/null
+engine sync >/dev/null
+eq "store root listing unchanged by vendoring" "$PAYLOAD_BEFORE" "$(ls -A "$STORE" | LC_ALL=C sort)"
+eq "store porcelain empty after vendoring" "" "$(git -C "$STORE" status --porcelain)"
+check_not "engine is not inside the store" test -e "$STORE/lundegaard.engine.sh"
+check_not "engine is not linked into the worktree root" test -e "$HOST/lundegaard.engine.sh"
+check_not "engine is not linked into the worktree root (broken link)" test -L "$HOST/lundegaard.engine.sh"
+check_not "sync did not commit the engine" git -C "$STORE" cat-file -e "HEAD:lundegaard.engine.sh"
+check_not "engine is not in the managed exclude block" grep -Fq "lundegaard.engine.sh" "$HOST/.git/info/exclude"
+host_clean "$HOST" "after vendoring"
+
 step "init refuses an existing store"
 check_not "second init exits non-zero" engine init "$REMOTE"
 check "store survived the refusal" test -d "$STORE/.git"
@@ -214,6 +252,7 @@ git init -q -b main "$WORK/other"
 git -C "$WORK/other" commit -q --allow-empty -m x
 (cd "$WORK/other" && check_not "bad clone exits non-zero" engine init "$WORK/does-not-exist.git")
 check_not "no partial store left behind" test -e "$WORK/other/.git/lundegaard"
+check_not "no engine vendored by a failed init" test -e "$WORK/other/.git/lundegaard.engine.sh"
 
 step "interrupted clone cleans up its partial store"
 INT_HOST="$WORK/interrupted-init"
@@ -233,6 +272,7 @@ else
     ok "interrupted init exits non-zero"
 fi
 check_not "interrupted init removes the partial store" test -e "$INT_HOST/.git/lundegaard"
+check_not "interrupted init vendors no engine" test -e "$INT_HOST/.git/lundegaard.engine.sh"
 check_not "interrupted init releases the lock" test -e "$INT_HOST/.git/lundegaard.lock"
 
 step "concurrent init checks store absence under the lock"
@@ -328,6 +368,37 @@ host_clean "$EMPTY_HOST" "after first remote commit"
 step "heal is a quiet no-op when healthy"
 eq "heal --quiet prints nothing" "" "$(engine heal --quiet 2>&1)"
 host_clean "$HOST" "after heal no-op"
+eq "matching versions leave the vendored engine untouched" "$VERSION" "$(vendored_version "$VENDORED")"
+
+step "heal refreshes a drifted vendored engine"
+sed 's/^VERSION=.*/VERSION=0.0.1-old/' "$VENDORED" >"$WORK/drifted.sh"
+cp "$WORK/drifted.sh" "$VENDORED"
+chmod +x "$VENDORED"
+case "$(engine status)" in
+    *"vendored 0.0.1-old"*"differs from the running $VERSION"*)
+        ok "status names both versions on drift"
+        ;;
+    *) bad "status should name both versions on drift (got: $(engine status))" ;;
+esac
+DRIFT_HEAL=$(engine heal)
+case $DRIFT_HEAL in
+    *"refresh the vendored engine"*"0.0.1-old -> $VERSION"*) ok "heal reports the refresh" ;;
+    *) bad "heal should report the refresh (got: $DRIFT_HEAL)" ;;
+esac
+eq "drifted engine was rewritten" "$VERSION" "$(vendored_version "$VENDORED")"
+check "refreshed engine stays executable" test -x "$VENDORED"
+eq "heal is quiet again once versions match" "" "$(engine heal --quiet 2>&1)"
+host_clean "$HOST" "after refreshing the vendored engine"
+
+step "heal restores a deleted vendored engine"
+rm "$VENDORED"
+case "$(engine status)" in
+    *"engine   : not vendored at $VENDORED"*) ok "status reports the missing engine" ;;
+    *) bad "status should report the missing engine" ;;
+esac
+engine heal >/dev/null
+check "heal recreated the vendored engine" test -x "$VENDORED"
+eq "recreated engine has the running version" "$VERSION" "$(vendored_version "$VENDORED")"
 
 step "write through a symlink lands in the store"
 printf 'edited\n' >"$HOST/.claude/settings.json"
@@ -467,6 +538,7 @@ step "git clean -fdx removes links, heal restores them"
 git -C "$HOST" clean -fdxq
 check_not ".claude link gone" test -L "$HOST/.claude"
 check "store survived git clean" test -d "$STORE/.git"
+check "vendored engine survived git clean" test -x "$VENDORED"
 engine heal >/dev/null
 check "link .claude restored" is_link_to "$HOST/.claude" "$STORE/.claude"
 check "link openspec restored" is_link_to "$HOST/openspec" "$STORE/openspec"
@@ -538,6 +610,74 @@ eq "store resolves identically from the worktree" \
 step "edits made in the worktree are the same files"
 printf 'from-worktree\n' >"$WT/.claude/settings.json"
 eq "main worktree sees the edit" "from-worktree" "$(cat "$HOST/.claude/settings.json")"
+
+# --- agentless bootstrap (artifact-bootstrap) ------------------------------
+
+step "the vendored engine bootstraps a worktree after the plugin disappears"
+FAKE_PLUGIN="$WORK/fake-plugin"
+VHOST="$WORK/vendor-host"
+VSTORE="$VHOST/.git/lundegaard"
+VWT="$WORK/vendor-host-wt"
+mkdir -p "$FAKE_PLUGIN/scripts"
+cp "$ENGINE" "$FAKE_PLUGIN/scripts/lnd-artifacts.sh"
+chmod +x "$FAKE_PLUGIN/scripts/lnd-artifacts.sh"
+git init -q -b main "$VHOST"
+git -C "$VHOST" commit -q --allow-empty -m host
+(cd "$VHOST" && sh "$FAKE_PLUGIN/scripts/lnd-artifacts.sh" init "$REMOTE") >/dev/null
+check "a plugin copy elsewhere vendors the engine too" test -x "$VHOST/.git/lundegaard.engine.sh"
+rm -rf "$FAKE_PLUGIN"
+check_not "the plugin is really gone" test -e "$FAKE_PLUGIN/scripts/lnd-artifacts.sh"
+git -C "$VHOST" worktree add -q -b vendor-feature "$VWT"
+check_not "fresh worktree starts without links" test -L "$VWT/.claude"
+if WT_INIT_OUT=$(worktree_init "$VWT" 2>&1); then WT_INIT_RC=0; else WT_INIT_RC=$?; fi
+eq "worktree-init line exits zero" "0" "$WT_INIT_RC"
+case $WT_INIT_OUT in
+    *"link .claude"*) ok "worktree-init line reports the links it created" ;;
+    *) bad "worktree-init line should report created links (got: $WT_INIT_OUT)" ;;
+esac
+check "worktree-init created .claude" is_link_to "$VWT/.claude" "$VSTORE/.claude"
+check "worktree-init created openspec" is_link_to "$VWT/openspec" "$VSTORE/openspec"
+check "worktree-init created CLAUDE.md" is_link_to "$VWT/CLAUDE.md" "$VSTORE/CLAUDE.md"
+host_clean "$VWT" "worktree after agentless bootstrap"
+host_clean "$VHOST" "main worktree after agentless bootstrap"
+
+step "the worktree-init line works from a nested subdirectory"
+rm "$VWT/.claude"
+mkdir -p "$VWT/deep/nested"
+if worktree_init "$VWT/deep/nested" >/dev/null 2>&1; then NEST_RC=0; else NEST_RC=$?; fi
+eq "nested worktree-init exits zero" "0" "$NEST_RC"
+check "nested worktree-init links at the worktree root" is_link_to "$VWT/.claude" "$VSTORE/.claude"
+check_not "nested worktree-init links nothing in the subdirectory" test -e "$VWT/deep/nested/.claude"
+rm -rf "$VWT/deep"
+host_clean "$VWT" "worktree after nested bootstrap"
+
+step "the worktree-init line is a silent no-op where it does not apply"
+if NOSTORE_OUT=$(worktree_init "$WORK/other" 2>&1); then NOSTORE_RC=0; else NOSTORE_RC=$?; fi
+eq "storeless repo exits zero" "0" "$NOSTORE_RC"
+eq "storeless repo stays silent" "" "$NOSTORE_OUT"
+if NOGIT_OUT=$(worktree_init "$WORK" 2>&1); then NOGIT_RC=0; else NOGIT_RC=$?; fi
+eq "outside a git repo exits zero" "0" "$NOGIT_RC"
+eq "outside a git repo stays silent" "" "$NOGIT_OUT"
+host_clean "$WORK/other" "storeless repo after the worktree-init line"
+
+step "detach clears the bootstrap, heal restores it"
+(cd "$VHOST" && engine detach --dry-run >/dev/null)
+check "dry-run detach keeps the vendored engine" test -x "$VHOST/.git/lundegaard.engine.sh"
+(cd "$VHOST" && engine detach --all-worktrees >/dev/null)
+check_not "detach removed the vendored engine" test -e "$VHOST/.git/lundegaard.engine.sh"
+check "detach kept the store" test -f "$VSTORE/.claude/settings.json"
+check_not "detach removed the worktree link" test -L "$VWT/.claude"
+if DETACHED_OUT=$(worktree_init "$VWT" 2>&1); then DETACHED_RC=0; else DETACHED_RC=$?; fi
+eq "the one-liner is a no-op once detached" "0" "$DETACHED_RC"
+eq "the one-liner stays silent once detached" "" "$DETACHED_OUT"
+(cd "$VHOST" && engine heal >/dev/null)
+check "heal restored the vendored engine" test -x "$VHOST/.git/lundegaard.engine.sh"
+check "heal restored the main worktree link" is_link_to "$VHOST/.claude" "$VSTORE/.claude"
+(cd "$VWT" && engine heal >/dev/null)
+check "heal restored the linked worktree" is_link_to "$VWT/.claude" "$VSTORE/.claude"
+eq "the store was untouched throughout" "" "$(git -C "$VSTORE" status --porcelain)"
+host_clean "$VHOST" "after detach -> heal round-trip"
+host_clean "$VWT" "linked worktree after detach -> heal round-trip"
 
 step "concurrent sync recomputes state after acquiring the lock"
 LOCKDIR="$HOST/.git/lundegaard.lock"
@@ -663,8 +803,10 @@ host_clean "$HOST" "after removing a store entry"
 step "detach removes links and the exclude block, keeps the store"
 engine detach --dry-run >/dev/null
 check "dry-run detach kept the links" test -L "$HOST/.claude"
+check "dry-run detach kept the vendored engine" test -x "$VENDORED"
 engine detach --all-worktrees >/dev/null
 check_not "main worktree link gone" test -L "$HOST/.claude"
+check_not "vendored engine gone" test -e "$VENDORED"
 check_not "worktree link gone" test -L "$WT/.claude"
 check_not "managed block gone" grep -Fq ">>> lnd-artifacts managed >>>" "$HOST/.git/info/exclude"
 eq "user exclude rules still intact" "$EXCLUDE_BEFORE" "$(cat "$HOST/.git/info/exclude")"
@@ -676,6 +818,7 @@ step "heal restores everything after detach"
 engine heal >/dev/null
 check "link .claude restored" is_link_to "$HOST/.claude" "$STORE/.claude"
 check "link .opencode restored" is_link_to "$HOST/.opencode" "$STORE/.opencode"
+check "vendored engine restored" test -x "$VENDORED"
 check "managed block restored" grep -Fq ">>> lnd-artifacts managed >>>" "$HOST/.git/info/exclude"
 host_clean "$HOST" "after detach -> heal round-trip"
 (cd "$WT" && engine heal >/dev/null)

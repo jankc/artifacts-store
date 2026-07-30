@@ -2,7 +2,8 @@ schema: spec-driven
 
 context: |
   This repo IS a Claude Code plugin (lnd-artifacts): one POSIX script
-  (scripts/lnd-artifacts.sh), one root SKILL.md, hooks/hooks.json.
+  (scripts/lnd-artifacts.sh), one skill (skills/lnd-artifacts/SKILL.md),
+  hooks/hooks.json, and mirrored .claude-plugin/.codex-plugin manifests.
   It manages per-project AI artifacts in a private repo cloned into the host
   project's git common dir (.git/lundegaard), symlinks its first-level entries
   (except .git) into the project root, and maintains a marker-delimited block in

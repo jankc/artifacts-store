@@ -1,6 +1,6 @@
 # lnd-artifacts
 
-A Claude Code plugin that versions your AI tool artifacts (`.claude/`, `openspec/`,
+A Claude Code and Codex plugin that versions your AI tool artifacts (`.claude/`, `openspec/`,
 `CLAUDE.md`, …) in a **private artifact repository** — without ever committing them to
 the customer's repository.
 
@@ -17,6 +17,7 @@ customer-project/
       .claude/
       openspec/
       CLAUDE.md
+    lundegaard.engine.sh <- runnable copy of the engine (agentless bootstrap)
     info/exclude         <- managed block ignoring the links below
   .claude      -> .git/lundegaard/.claude
   openspec     -> .git/lundegaard/openspec
@@ -47,7 +48,9 @@ $ENGINE init git@host:team/project-artifacts.git
 $ENGINE sync
 ```
 
-`$ENGINE` is whatever stable path you pin for `scripts/lnd-artifacts.sh` — see
+The first `init` runs from the plugin checkout. After it, every project carries its own
+runnable copy of the engine, so outside a session `$ENGINE` is simply
+`"$(git rev-parse --git-common-dir)/lundegaard.engine.sh"` — see
 [Invoking the engine outside a session](#invoking-the-engine-outside-a-session).
 
 ## Verbs
@@ -66,10 +69,19 @@ Every mutating verb accepts `--dry-run` and prints the full plan without touchin
 ## Invoking the engine outside a session
 
 Inside a Claude session you never need a path — the skill resolves the engine through
-`${CLAUDE_PLUGIN_ROOT}`. Outside one (shell, git hook, worktree-init tooling, Codex)
-there is no discovery mechanism that spans agents, so **pin one stable path yourself**.
+`${CLAUDE_PLUGIN_ROOT}`. Outside one (shell, git hook, worktree-init tooling, Codex),
+**do not reference the plugin at all**: `init` leaves a runnable copy of the engine in the
+project's git common dir, and that copy is what every external caller should use.
 
-Three paths that look tempting and are not stable:
+```sh
+ENGINE="$(git rev-parse --git-common-dir)/lundegaard.engine.sh"
+```
+
+The copy is a plain file next to the store (`.git/lundegaard.engine.sh` in the main
+worktree). It works with no plugin installed, no `PATH` entry and no environment
+variables, and every worktree of the clone resolves the same path.
+
+Why not just pin a plugin path? Because none of them is stable:
 
 | Path | Why not |
 | --- | --- |
@@ -77,66 +89,114 @@ Three paths that look tempting and are not stable:
 | `~/.claude/skills/lnd-artifacts/…` | tied to one `CLAUDE_CONFIG_DIR`; invisible to sessions using another |
 | `${CLAUDE_PLUGIN_ROOT}/…` | only set while a Claude hook or skill is running |
 
-What works is one indirection you control. If you keep an agent-neutral skills directory,
-point it at the checkout and have each agent's config dir hop through it:
+Publishing the plugin to a marketplace makes this worse, not better — the install path
+then carries a version component that changes under your feet.
 
-```sh
-ln -s /path/to/lnd-artifacts            ~/.agents/skills/lnd-artifacts
-ln -s ../../.agents/skills/lnd-artifacts ~/.claude/skills/lnd-artifacts
-ln -s ../../.agents/skills/lnd-artifacts ~/.claude-work/skills/lnd-artifacts
-```
+Three things worth knowing about the vendored copy:
 
-Anything under `~/.claude*/skills/` auto-loads as a plugin (`<name>@skills-dir`) with its
-skill and hooks, no marketplace needed. The canonical engine path is then:
+- **Don't edit it.** `heal` overwrites it whenever its version differs from the running
+  plugin's (upgrade *or* downgrade), so local edits are lost. Project-specific behavior
+  belongs in the store, not in the engine.
+- **`git clean` cannot remove it.** It lives inside `.git/`, like the store. `status`
+  reports its version, so drift is visible; `heal` refreshes it, and the SessionStart hook
+  runs `heal`, so an upgraded plugin propagates on the next session with no user action.
+- It is a script under `.git/` that your tooling executes — no new trust boundary
+  (`.git/hooks` already runs arbitrary code in any repo you check out), but worth knowing.
 
-```sh
-ENGINE="$HOME/.agents/skills/lnd-artifacts/scripts/lnd-artifacts.sh"
-```
-
-Move the checkout later and you fix one symlink. Referencing the checkout directly works
-too — the engine is self-contained POSIX shell and doesn't care where it is called from.
+The first `init` still needs the plugin, since there is nothing vendored yet. Run it from
+a Claude session, or by path into your checkout — the engine is self-contained POSIX shell
+and does not care where it is called from.
 
 ### New worktrees without an agent
 
 `heal` takes no arguments: it resolves the store from the current directory, so any
-worktree-init hook that runs with the new worktree as its cwd is enough. For example, in
-worktrunk:
+worktree-init hook that runs with the new worktree as its cwd is enough. This is the line
+to put in that tooling:
+
+```sh
+E="$(git rev-parse --git-common-dir 2>/dev/null)/lundegaard.engine.sh"; [ -x "$E" ] && "$E" heal --quiet || true
+```
+
+For example, in worktrunk:
 
 ```toml
 [[pre-start]]
-lnd-artifacts = "$HOME/.agents/skills/lnd-artifacts/scripts/lnd-artifacts.sh heal"
+lnd-artifacts = 'E="$(git rev-parse --git-common-dir 2>/dev/null)/lundegaard.engine.sh"; [ -x "$E" ] && "$E" heal --quiet || true'
 ```
 
-Better still, let git do it with no per-tool config. `git worktree add` fires
-`post-checkout` with the new worktree as cwd, and hooks live in the common dir, so one
-file covers every worktree of the clone:
+Worktree-init configuration is global — it fires in every project you create a worktree
+in, and most of them have no artifact store. The `[ -x "$E" ]` guard is what makes the
+line a silent, zero-exit no-op there, and outside git repositories entirely. Keep it.
+
+If you would rather have git do it with no per-tool config, the same line fits a
+`post-checkout` hook (`git worktree add` fires it with the new worktree as cwd, and hooks
+resolve from the common dir, so one file covers every worktree):
 
 ```sh
 cat > "$(git rev-parse --git-common-dir)/hooks/post-checkout" <<'EOF'
 #!/bin/sh
 [ "$3" = 1 ] || exit 0            # branch checkouts only, not `git checkout -- <file>`
-"$HOME/.agents/skills/lnd-artifacts/scripts/lnd-artifacts.sh" heal --quiet 2>/dev/null || true
+E="$(git rev-parse --git-common-dir)/lundegaard.engine.sh"
+[ -x "$E" ] && "$E" heal --quiet || true
 exit 0
 EOF
 chmod +x "$(git rev-parse --git-common-dir)/hooks/post-checkout"
 ```
 
-This also repairs links on a plain `git switch`. Before using it, check that:
-
-- `git config core.hooksPath` is unset — husky/lefthook redirect hooks and this file
-  would never run;
-- the project has no existing `post-checkout` — append the two lines instead of
-  overwriting;
-- you keep the `2>/dev/null || true`: in a repo without a store `heal` exits non-zero,
-  and you do not want that noise on every checkout.
-
-`git worktree add --no-checkout` does not fire the hook, and the hook is per-project —
-install it once in each repo where you want it.
+That also repairs links on a plain `git switch`. Before using it, check that
+`git config core.hooksPath` is unset (husky/lefthook redirect hooks and this file would
+never run) and that the project has no existing `post-checkout` to clobber.
+`git worktree add --no-checkout` does not fire it, and it is per-project — install it once
+in each repo where you want it.
 
 Without either of these the SessionStart hook still heals the worktree, but only once an
 agent starts there — and that first session will not yet have the store's `CLAUDE.md` as
 project instructions, because instruction files are collected before the hook restores
 the link. Healing up front avoids that.
+
+## Codex
+
+The skill is runtime-neutral: it resolves the engine through `${CLAUDE_PLUGIN_ROOT}` when
+that variable is set and through the vendored copy in the git common dir otherwise, so a
+Codex session drives every verb in any initialized project.
+
+### Wiring
+
+Codex discovers user-level skills in `$CODEX_HOME/skills` (`~/.codex/skills` when
+`CODEX_HOME` is unset). Link the checkout in through the agent-neutral skills directory,
+the same hop scheme as Claude:
+
+```sh
+mkdir -p ~/.agents/skills ~/.codex/skills
+ln -sfn /path/to/lnd-artifacts        ~/.agents/skills/lnd-artifacts
+ln -sfn ~/.agents/skills/lnd-artifacts ~/.codex/skills/lnd-artifacts
+```
+
+Codex descends into the plugin's `skills/` directory, so the link points at the checkout
+root, not at `skills/lnd-artifacts`. Per project instead of per user, a
+`.codex/skills/lnd-artifacts` link in the project works the same way.
+
+The indirection is what makes the first `init` answerable: with no store yet there is
+nothing vendored and no `CLAUDE_PLUGIN_ROOT`, so the skill asks you where the engine is,
+and `~/.agents/skills/lnd-artifacts/scripts/lnd-artifacts.sh` is a stable answer.
+
+### What Codex users do not get
+
+The two lifecycle hooks are Claude Code plugin hooks and do not travel with the skill:
+
+- **No SessionStart heal** — links are not repaired automatically when a session starts.
+- **No Stop warning** — a session that never touches artifacts never mentions unsynced
+  state on its own.
+
+Three things compensate, in order of strength:
+
+1. **The vendored one-liner** in worktree-init tooling or a `post-checkout` hook (see
+   [New worktrees without an agent](#new-worktrees-without-an-agent)) — runtime-independent,
+   and it heals *before* any agent starts, which the SessionStart hook cannot do.
+2. **The skill's opening rule** — run `status` before artifact work, `heal` when it
+   reports link damage.
+3. **The skill's closing rule** — after editing artifacts, report unsynced state and
+   suggest `sync`. As everywhere else, `sync` still runs only when you ask for it.
 
 ## Conventions and constraints
 
@@ -170,20 +230,25 @@ the link. Healing up front avoids that.
 
 ```sh
 claude --plugin-dir /path/to/lnd-artifacts   # load, session-only
-# /reload-plugins  inside the session after editing SKILL.md, hooks or scripts
+# /reload-plugins  inside the session after editing the skill, hooks or scripts
 ./scripts/smoke.sh                           # disposable-fixture end-to-end test
 ```
 
 Layout:
 
 ```
-.claude-plugin/plugin.json   manifest
-SKILL.md                     the single skill that drives the engine
-scripts/lnd-artifacts.sh     the engine (all verbs)
-scripts/smoke.sh             end-to-end test on throwaway fixtures
-hooks/hooks.json             SessionStart (heal) + Stop (warn)
+.claude-plugin/plugin.json      Claude Code manifest
+.codex-plugin/plugin.json       Codex mirror manifest (same name/version/description)
+skills/lnd-artifacts/SKILL.md   the single skill that drives the engine
+scripts/lnd-artifacts.sh        the engine (all verbs)
+scripts/smoke.sh                end-to-end test on throwaway fixtures
+hooks/hooks.json                SessionStart (heal) + Stop (warn)
 hooks/session-start.sh
 hooks/stop.sh
 ```
+
+Both manifests declare `"skills": "./skills/"` and must stay in version lockstep. The
+engine's own `VERSION=` is what `heal` compares against the vendored copy, so it is the
+source of truth for behavior; the manifest versions are packaging metadata that follow it.
 
 Deleting `hooks/hooks.json` degrades the plugin gracefully to fully manual operation.

@@ -10,14 +10,41 @@ Artifacts live in a private git clone at `<git-common-dir>/lundegaard` (i.e.
 project root and ignored through a managed block in `<git-common-dir>/info/exclude`, so
 nothing ever reaches the customer's remote.
 
-The engine is a POSIX script:
+The engine is a POSIX script. Resolve `$ENGINE` in this order, and stop at the first
+step that yields an existing file:
 
-```
-ENGINE="${CLAUDE_PLUGIN_ROOT}/scripts/lnd-artifacts.sh"
+1. **`${CLAUDE_PLUGIN_ROOT}/scripts/lnd-artifacts.sh`** — when `CLAUDE_PLUGIN_ROOT` is
+   set (a Claude Code session). Always current with the installed plugin.
+2. **`$(git rev-parse --git-common-dir)/lundegaard.engine.sh`** — otherwise (Codex or any
+   other runtime). Every initialized project carries this vendored copy; it works
+   identically in every runtime and in every worktree.
+3. **Ask the user** for the path to the engine or to the plugin checkout. This case is
+   the first-ever `init` in a project outside Claude Code: no store exists yet, so there
+   is nothing vendored, and there is no plugin variable to read. Never guess install
+   locations and never search the filesystem for the checkout.
+
+```sh
+ENGINE="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts/lnd-artifacts.sh}"
+[ -x "$ENGINE" ] || ENGINE="$(git rev-parse --git-common-dir)/lundegaard.engine.sh"
 ```
 
 Always run it from inside the project (any worktree). It never modifies the host
 repository — no commits, no staging, no config writes.
+
+`init` also leaves a runnable copy of the engine at
+`<git-common-dir>/lundegaard.engine.sh`, refreshed by `heal` whenever the plugin's version
+changes. That copy is how a project gets artifacts **without an agent** — e.g. in a brand
+new worktree. Tell users to put this line in their worktree-init tooling (worktrunk
+`pre-start`, a `post-checkout` hook, a Makefile target); the `[ -x "$E" ]` guard makes it a
+silent no-op in projects with no store and outside git repositories, so it is safe to
+configure globally:
+
+```sh
+E="$(git rev-parse --git-common-dir 2>/dev/null)/lundegaard.engine.sh"; [ -x "$E" ] && "$E" heal --quiet || true
+```
+
+Never suggest editing that copy — `heal` overwrites it on version drift. `status` reports
+its version.
 
 ## When to use this skill
 
@@ -45,30 +72,47 @@ Every mutating verb takes `--dry-run`.
 
 ## Rules
 
-1. **Preview first.** Run `--dry-run` before `init`, `adopt` and `detach`, show the user
+1. **Open with `status`.** Before starting any artifact-related work, run
+   `"$ENGINE" status`. If it reports missing or broken links, run `"$ENGINE" heal` before
+   doing anything else. Claude Code does this automatically in a SessionStart hook;
+   runtimes without hooks (Codex) rely on this rule, so never skip it there.
+2. **Preview first.** Run `--dry-run` before `init`, `adopt` and `detach`, show the user
    the plan, and only then run for real. `heal` and `sync` may be run directly, but a
    `--dry-run` is still welcome when the state looks unusual.
-2. **`init` needs a remote URL — ask for it.** Never invent one, never reuse another
+3. **`init` needs a remote URL — ask for it.** Never invent one, never reuse another
    project's artifact repo: one artifact repository serves exactly one customer project.
    If the user does not have one yet, tell them to create an empty private repo and give
    you its clone URL.
-3. **Never commit or push on your own initiative.** `sync` is an explicit user decision.
+4. **Never commit or push on your own initiative.** `sync` is an explicit user decision.
    Suggest it when `status` shows unsynced work; do not run it as a side effect of
    another task.
-4. **Never work around a refusal.** If `adopt` refuses a tracked path, do not
+5. **Close by naming unsynced state.** When a task edited artifacts, finish by reporting
+   that the store has uncommitted or unpushed changes and suggesting `"$ENGINE" sync`.
+   This is a sentence, not an action — rule 4 still holds, so wait for the user to ask.
+   Claude Code also warns about this in a Stop hook; in runtimes without hooks this rule
+   is the only nudge the user gets.
+6. **Never work around a refusal.** If `adopt` refuses a tracked path, do not
    `git rm --cached` it — explain that tracked content belongs to the customer repo.
-5. **Report quarantines loudly.** `heal`/`adopt` rename anything foreign found at a
+7. **Report quarantines loudly.** `heal`/`adopt` rename anything foreign found at a
    managed name to `<name>.quarantined-<timestamp>`. Tell the user what was quarantined
    and let them decide whether to merge the contents into the store or delete it.
-6. **Keep the store root payload-only.** Every first-level entry of the store gets
+8. **Keep the store root payload-only.** Every first-level entry of the store gets
    symlinked into the project root, so never create `README.md`, `.gitignore` or other
    housekeeping files at the store root. Tool-level ignores go inside the tool folder
    (e.g. `.claude/.gitignore`).
-7. **Edit artifacts through the project-root symlinks** (`.claude/…`, `openspec/…`) as
+9. **Edit artifacts through the project-root symlinks** (`.claude/…`, `openspec/…`) as
    usual — they are the same files as in the store.
 
 ## Initialization dialogue
 
+0. Resolve `$ENGINE`. If `CLAUDE_PLUGIN_ROOT` is unset **and** there is no vendored
+   engine in the git common dir — the first-ever `init` outside Claude Code — say so and
+   ask the user where the plugin lives, e.g. "I need the path to the lnd-artifacts
+   engine (`<checkout>/scripts/lnd-artifacts.sh`) — where is the checkout?". If they have
+   the agent-neutral skills directory wired, the answer is
+   `~/.agents/skills/lnd-artifacts/scripts/lnd-artifacts.sh`. Do not search for it and do
+   not proceed without an answer; after `init` the vendored copy makes every later run in
+   this project self-resolving.
 1. Run `"$ENGINE" status`. If it reports a store, there is nothing to initialize — offer
    `heal` or `status` instead.
 2. Ask the user for the artifact repository remote URL (e.g.

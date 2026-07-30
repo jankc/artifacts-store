@@ -1,0 +1,20 @@
+{
+  "name": "lnd-artifacts",
+  "description": "Per-project AI artifact transport: keeps .claude/, openspec/, CLAUDE.md and friends in a private artifact repo cloned into the host project's git common dir, symlinked into the project root and never committed to the customer remote.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Lundegaard"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Lundegaard Artifacts",
+    "shortDescription": "Private per-project artifact repo, symlinked in, never committed to the customer repo",
+    "longDescription": "Keeps a project's AI artifacts (.claude/, openspec/, CLAUDE.md, …) in a private artifact repository cloned into the host project's git common dir (.git/lundegaard). Every first-level entry of the store is symlinked into the project root and ignored through a managed block in <git-common-dir>/info/exclude, so the customer repository never sees them. Verbs: init, heal, adopt, sync, status, detach — POSIX shell and git only. The engine never commits or pushes the host repository, and syncing the artifact repo is always an explicit decision.",
+    "developerName": "Lundegaard",
+    "category": "Engineering",
+    "defaultPrompt": [
+      "Set up artifact management for this project"
+    ],
+    "brandColor": "#0B5FFF"
+  }
+}
