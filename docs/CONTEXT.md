@@ -37,9 +37,13 @@ Putting the store there gives, for free:
   exactly the thing the working-tree model could not do.
 - **Structural leak-proofing** — content under `.git/` can never be committed to the
   customer remote.
-- **`git clean -fdx` survivability** — with the old model, the ignored `.lundegaard/`
-  directory would be DELETED by `git clean -fdx`, including unpushed commits. Now clean
-  only removes the symlinks (trivially restored by `heal`); the store is untouchable.
+- **`git clean` survivability** — with the old model, the ignored `.lundegaard/`
+  directory would be DELETED by `git clean -ffdx`, including unpushed commits. (Plain
+  `-fdx` spares it — git's nested-repo protection needs the second `-f` — and
+  `git stash --all` skips it too; verified on git 2.50.1. But `-ffdx` is a common
+  "scorched earth" recipe, e.g. in CI cleanup steps, precisely because it removes
+  nested repos.) Now no working-tree command can touch the store: clean only removes
+  the symlinks (trivially restored by `heal`).
 - Nested repos inside `.git/` are a known-good pattern (people version `.git/hooks`
   this way). All store git operations still use explicit `git -C "$STORE"`.
 

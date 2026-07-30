@@ -77,6 +77,9 @@ When a managed link should be created at a name where a real file, real director
 foreign symlink (target outside the store) already exists, the engine SHALL rename the
 existing path to `<name>.quarantined-<timestamp>` before linking, and SHALL report each
 quarantine loudly. The engine SHALL never delete or overwrite pre-existing content.
+Exception: a path tracked by the host repository SHALL NOT be moved at all — moving it
+would surface as a deletion in the customer repository. The engine SHALL warn, skip that
+entry (customer content wins), and `status` SHALL report it as a collision.
 
 #### Scenario: Real directory at a managed name
 
@@ -84,6 +87,14 @@ quarantine loudly. The engine SHALL never delete or overwrite pre-existing conte
   the store provides `.claude`
 - **THEN** the directory is renamed to `.claude.quarantined-<timestamp>` and a symlink
   `.claude` to the store entry is created
+
+#### Scenario: Store entry collides with tracked host content
+
+- **WHEN** `heal` runs and the store provides an entry whose name is tracked by the host
+  repository (e.g. `README.md`)
+- **THEN** the tracked path is left untouched, the engine warns about the collision and
+  skips that entry, and `status` reports it as a collision until the store entry is
+  renamed or removed
 
 ### Requirement: adopt moves a path into the store and links it back
 

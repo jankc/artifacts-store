@@ -289,9 +289,12 @@ read_managed() {
         if [ "$rd_inside" -eq 1 ]; then
             case $rd_line in
                 '' | '#'*) continue ;;
+            esac
+            rd_line=${rd_line#/}
+            case $rd_line in
                 '\'*) rd_line=${rd_line#\\} ;;
             esac
-            printf '%s\n' "${rd_line#/}"
+            printf '%s\n' "$rd_line"
         fi
     done <"$EXCLUDE_FILE"
 }
