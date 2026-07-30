@@ -23,9 +23,9 @@ structurally impossible.
   indirection, no adopt manifest, no categories.
 - A marker-delimited managed block in `<common-dir>/info/exclude` ignores the symlinks;
   because the exclude file lives in the common dir, one block covers the main worktree
-  and every linked worktree. The block doubles as state for `cure`.
+  and every linked worktree. The block doubles as state for `detach`.
 - One POSIX script `scripts/lnd-artifacts.sh` implements all verbs:
-  `init <remote-url>`, `heal`, `adopt <path>`, `sync`, `status`, `cure` — each with
+  `init <remote-url>`, `heal`, `adopt <path>`, `sync`, `status`, `detach` — each with
   `--dry-run` support.
 - Worktree support: `heal` (re)materializes symlinks in the current worktree; the store
   and exclude block are shared via the common dir, so a new worktree needs only `heal`.
@@ -34,7 +34,7 @@ structurally impossible.
   unpushed changes. Hooks never commit or push — `sync` is always an explicit human/skill
   action.
 - One skill (`SKILL.md`) that teaches Claude when and how to drive the script
-  (initialization dialogue asking for the remote URL, adopt/sync/status/cure flows).
+  (initialization dialogue asking for the remote URL, adopt/sync/status/detach flows).
 
 ## Capabilities
 
@@ -43,7 +43,7 @@ structurally impossible.
 - `artifact-store`: lifecycle of the per-project artifact store in the git common dir —
   init (clone from remote), location resolution, locking, and safety guards.
 - `artifact-linking`: first-level symlinking of store entries into the project root,
-  managed exclude block, heal/adopt/cure semantics, quarantine of pre-existing paths,
+  managed exclude block, heal/adopt/detach semantics, quarantine of pre-existing paths,
   and worktree behavior.
 - `artifact-sync`: explicit commit/pull-rebase/push flow, status reporting (dirty and
   unpushed state), and conflict surfacing.

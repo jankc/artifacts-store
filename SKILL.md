@@ -28,7 +28,7 @@ repository — no commits, no staging, no config writes.
 | "put `.opencode/` into the artifact repo", "adopt this folder" | `adopt <path>` |
 | "sync/push/commit the artifacts", "save my artifact changes" | `sync` |
 | "are the artifacts up to date?", "what is the artifact state?" | `status` |
-| "remove the artifact links", "unhook this project" | `cure` |
+| "remove the artifact links", "unhook this project" | `detach` |
 
 ## Verbs
 
@@ -38,14 +38,14 @@ repository — no commits, no staging, no config writes.
 "$ENGINE" adopt <path>        # move an untracked first-level path into the store
 "$ENGINE" sync [-m "msg"]     # commit -A, pull --rebase, push
 "$ENGINE" status              # read-only health report
-"$ENGINE" cure [--all-worktrees]  # remove links + exclude block, keep the store
+"$ENGINE" detach [--all-worktrees]  # remove links + exclude block, keep the store
 ```
 
 Every mutating verb takes `--dry-run`.
 
 ## Rules
 
-1. **Preview first.** Run `--dry-run` before `init`, `adopt` and `cure`, show the user
+1. **Preview first.** Run `--dry-run` before `init`, `adopt` and `detach`, show the user
    the plan, and only then run for real. `heal` and `sync` may be run directly, but a
    `--dry-run` is still welcome when the state looks unusual.
 2. **`init` needs a remote URL — ask for it.** Never invent one, never reuse another

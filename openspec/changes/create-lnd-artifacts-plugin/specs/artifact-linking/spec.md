@@ -105,14 +105,14 @@ worktree root's first level, and names already present in the store.
 - **THEN** the engine exits non-zero explaining tracked content belongs to the host
   repository and nothing changes
 
-### Requirement: cure removes links and exclude block, preserving the store
+### Requirement: detach removes links and exclude block, preserving the store
 
-`cure` SHALL remove all managed symlinks from the current worktree (and, when run from
-the main worktree, offer to cure known linked worktrees), remove the managed exclude
+`detach` SHALL remove all managed symlinks from the current worktree (and, when run from
+the main worktree, offer to detach known linked worktrees), remove the managed exclude
 block, and leave the store itself untouched, so a later `heal` fully restores the setup.
 
-#### Scenario: Cure then heal round-trip
+#### Scenario: Detach then heal round-trip
 
-- **WHEN** `cure` runs and afterwards `heal` runs in the same worktree
-- **THEN** after `cure` no managed links or exclude block remain, the store is intact,
+- **WHEN** `detach` runs and afterwards `heal` runs in the same worktree
+- **THEN** after `detach` no managed links or exclude block remain, the store is intact,
   and after `heal` links and exclude block are fully restored

@@ -4,7 +4,7 @@
 #
 # Builds a throwaway host repository and a bare artifact remote under a temp dir,
 # then walks the whole life cycle: init -> edit through a symlink -> sync ->
-# git clean -fdx -> heal -> adopt -> worktree -> cure -> heal, asserting after
+# git clean -fdx -> heal -> adopt -> worktree -> detach -> heal, asserting after
 # every step that the HOST repository stays byte-for-byte clean.
 #
 # usage: ./scripts/smoke.sh [--keep]
@@ -358,27 +358,27 @@ check "the host's own README.md is untouched" test -f "$HOST/README.md"
 eq "host README.md content intact" "readme" "$(cat "$HOST/README.md")"
 host_clean "$HOST" "after removing a store entry"
 
-# --- cure / heal round-trip ------------------------------------------------
+# --- detach / heal round-trip ------------------------------------------------
 
-step "cure removes links and the exclude block, keeps the store"
-engine cure --dry-run >/dev/null
-check "dry-run cure kept the links" test -L "$HOST/.claude"
-engine cure --all-worktrees >/dev/null
+step "detach removes links and the exclude block, keeps the store"
+engine detach --dry-run >/dev/null
+check "dry-run detach kept the links" test -L "$HOST/.claude"
+engine detach --all-worktrees >/dev/null
 check_not "main worktree link gone" test -L "$HOST/.claude"
 check_not "worktree link gone" test -L "$WT/.claude"
 check_not "managed block gone" grep -Fq ">>> lnd-artifacts managed >>>" "$HOST/.git/info/exclude"
 eq "user exclude rules still intact" "$EXCLUDE_BEFORE" "$(cat "$HOST/.git/info/exclude")"
-check "store untouched by cure" test -f "$STORE/.claude/settings.json"
-host_clean "$HOST" "after cure"
+check "store untouched by detach" test -f "$STORE/.claude/settings.json"
+host_clean "$HOST" "after detach"
 
-step "heal restores everything after cure"
+step "heal restores everything after detach"
 engine heal >/dev/null
 check "link .claude restored" is_link_to "$HOST/.claude" "$STORE/.claude"
 check "link .opencode restored" is_link_to "$HOST/.opencode" "$STORE/.opencode"
 check "managed block restored" grep -Fq ">>> lnd-artifacts managed >>>" "$HOST/.git/info/exclude"
-host_clean "$HOST" "after cure -> heal round-trip"
+host_clean "$HOST" "after detach -> heal round-trip"
 (cd "$WT" && engine heal >/dev/null)
-host_clean "$WT" "worktree after cure -> heal round-trip"
+host_clean "$WT" "worktree after detach -> heal round-trip"
 
 # --- summary ---------------------------------------------------------------
 

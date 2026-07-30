@@ -56,7 +56,7 @@ claude --plugin-dir /path/to/lnd-artifacts
 | `adopt <path>` | Move an untracked first-level path into the store and link it back. |
 | `sync` | Commit everything in the store, `pull --rebase`, push. Explicit, never automatic. |
 | `status` | Store presence, dirty/unpushed counts, link health, quarantine leftovers. Never changes anything. |
-| `cure` | Remove the managed links and the exclude block. The store is left untouched — `heal` restores everything. |
+| `detach` | Remove the managed links and the exclude block. The store is left untouched — `heal` restores everything. |
 
 Every mutating verb accepts `--dry-run` and prints the full plan without touching disk.
 

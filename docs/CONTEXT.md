@@ -56,8 +56,9 @@ This plugin reuses its proven mechanics:
 
 - **First-level linking rule** — link every first-level entry (dirs AND files) of the
   live layer; no nested discovery. Here the "live layer" is the store root itself.
-- **Marker-delimited managed block in `.git/info/exclude`** that doubles as state for
-  `cure` (ailien's `--cure`).
+- **Marker-delimited managed block in `.git/info/exclude`** that doubles as teardown
+  state for our `detach` verb (ailien's `--cure`; we renamed it because `cure` and
+  `heal` are synonyms and read as the same operation — see design.md D4).
 - **Quarantine instead of delete** — pre-existing paths at a managed name are renamed
   `<name>.quarantined-<timestamp>`, never removed.
 - **`--dry-run` discipline** on every mutating operation.

@@ -60,7 +60,7 @@ repository.
 ### Requirement: The skill drives the engine conversationally
 
 The plugin SHALL ship a single skill that (a) triggers on artifact-management intents
-(initialize/adopt/sync/status/cure), (b) for initialization asks the user for the
+(initialize/adopt/sync/status/detach), (b) for initialization asks the user for the
 artifact remote URL before running `init`, and (c) maps each intent to the corresponding
 script verb, preferring `--dry-run` previews before destructive or bulk operations.
 

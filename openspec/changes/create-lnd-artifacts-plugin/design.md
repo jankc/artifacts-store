@@ -10,7 +10,7 @@ See proposal.md — Why. Two prior systems shape this design:
   `lnd-store-in-git-common-dir` change proposal validated the common-dir move but stayed
   entangled with governance hooks; it is abandoned, not migrated.
 - **ailien** (`~/dev/work/lunde/ailien`): proved first-level symlinking of live layers
-  into customer repos, marker-delimited `info/exclude` blocks as cure state, quarantine
+  into customer repos, marker-delimited `info/exclude` blocks as teardown state, quarantine
   instead of delete, and `--dry-run` discipline. This plugin inverts ailien's topology:
   instead of one central repo infecting many hosts via a `.targets` map, each host pulls
   its own artifact repo into its own `.git`.
@@ -26,7 +26,8 @@ customer repository; hooks must be safe to fire in arbitrary unrelated projects.
 - One script, one skill, two hooks; the store root listing is the only manifest.
 - Zero-touch worktrees: store, exclude block, and remote config shared via the common
   dir; only symlinks are per-worktree, and SessionStart heal materializes them.
-- Every mutating action previewable (`--dry-run`) and reversible (`cure` ↔ `heal`).
+- Every mutating action previewable (`--dry-run`) and reversible: `init` attaches a store
+  and `detach` releases it, with `heal` re-materializing links at any point in between.
 
 **Non-Goals:**
 
@@ -65,14 +66,20 @@ survive moving the whole clone; absolute links break. Each `heal` recomputes the
 relative path from the current worktree root to the resolved store. Link validation
 compares fully resolved targets (realpath), not link text.
 
-### D4 — Exclude block: marker-delimited, rewritten as a whole, doubles as cure state
+### D4 — Exclude block: marker-delimited, rewritten as a whole, doubles as teardown state
 
 Markers `# >>> lnd-artifacts managed >>>` / `# <<< lnd-artifacts managed <<<` in
 `<git-common-dir>/info/exclude`. The engine always regenerates the full block from the
 current store listing (plus `/.<name>.quarantined-*` noise is NOT excluded — quarantines
-must stay visible). Everything outside the markers is preserved verbatim. `cure` reads
+must stay visible). Everything outside the markers is preserved verbatim. `detach` reads
 the block to know what it once managed, then removes it — same mechanism as ailien's
 `--cure`.
+
+Naming note: the verb was called `cure` through planning, inherited from ailien's
+`infect`/`cure` pair. Renamed to `detach` during implementation because `cure` and `heal`
+are synonyms in English, which made the two verbs read as the same operation. The honest
+pairing is `init` (attach to a store) ↔ `detach`; `heal` is idempotent maintenance and
+not the opposite of anything.
 
 ### D5 — Locking: `mkdir` lock beside the store, in the common dir
 
@@ -118,7 +125,7 @@ Untracked and ignored collisions are still quarantined as specified.
 lnd-artifacts/
   .claude-plugin/plugin.json    name: lnd-artifacts
   SKILL.md                      single root skill (name via frontmatter)
-  scripts/lnd-artifacts.sh      all verbs: init|heal|adopt|sync|status|cure
+  scripts/lnd-artifacts.sh      all verbs: init|heal|adopt|sync|status|detach
   scripts/smoke.sh              disposable-fixture end-to-end test
   hooks/hooks.json              SessionStart + Stop → ${CLAUDE_PLUGIN_ROOT}/scripts/...
   README.md
@@ -148,7 +155,7 @@ nothing here changes.
 
 Nothing exists in production. No migration from lnd-core's `.lundegaard/` model is
 implemented; if a project has one, the documented path is: push it, remove the local
-directory, `init` fresh with the same remote. Rollback = `cure` (links and exclude gone,
+directory, `init` fresh with the same remote. Rollback = `detach` (links and exclude gone,
 store intact) or delete the store dir entirely after pushing.
 
 ## Open Questions

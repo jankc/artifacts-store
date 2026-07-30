@@ -73,13 +73,13 @@ verbs:
                       link it back
   sync                commit everything in the store, pull --rebase, push
   status              report store, sync and link health (never mutates)
-  cure                remove managed links and the exclude block; keep the store
+  detach              remove managed links and the exclude block; keep the store
 
 options:
   --dry-run           print the full plan, change nothing
   --quiet             suppress output when nothing changed (heal)
   -m, --message MSG   commit message for sync
-  --all-worktrees     cure: also unlink every other worktree of this clone
+  --all-worktrees     detach: also unlink every other worktree of this clone
   -h, --help          this text
   -V, --version       print version
 EOF
@@ -848,67 +848,67 @@ cmd_status() {
     return 0
 }
 
-# --- cure (3.6) ------------------------------------------------------------
+# --- detach (3.6) ------------------------------------------------------------
 
-cure_worktree() {
-    cw_root=$1
-    cw_names=$2
-    cw_save=$WT_ROOT
-    WT_ROOT=$cw_root
-    say "$PROG: unlinking in $cw_root"
-    cw_oifs=$IFS
+detach_worktree() {
+    dw_root=$1
+    dw_names=$2
+    dw_save=$WT_ROOT
+    WT_ROOT=$dw_root
+    say "$PROG: unlinking in $dw_root"
+    dw_oifs=$IFS
     IFS='
 '
     set -f
     # shellcheck disable=SC2086
-    set -- $cw_names
+    set -- $dw_names
     set +f
-    IFS=$cw_oifs
-    for cw_n in "$@"; do
-        unlink_managed "$cw_n"
+    IFS=$dw_oifs
+    for dw_n in "$@"; do
+        unlink_managed "$dw_n"
     done
-    WT_ROOT=$cw_save
+    WT_ROOT=$dw_save
 }
 
-cmd_cure() {
+cmd_detach() {
     resolve_repo
     require_store
 
-    cc_names=$(read_managed)
-    if [ -z "$cc_names" ]; then
-        cc_names=$(store_entries)
+    dt_names=$(read_managed)
+    if [ -z "$dt_names" ]; then
+        dt_names=$(store_entries)
     fi
-    if [ -z "$cc_names" ]; then
+    if [ -z "$dt_names" ]; then
         say "$PROG: nothing managed here — no links or exclude block to remove"
         return 0
     fi
 
     if ! dry; then acquire_lock; fi
 
-    cure_worktree "$WT_ROOT" "$cc_names"
+    detach_worktree "$WT_ROOT" "$dt_names"
 
-    cc_others=$(
+    dt_others=$(
         git worktree list --porcelain 2>/dev/null |
             sed -n 's/^worktree //p' || true
     )
-    cc_rest=""
-    if [ -n "$cc_others" ]; then
-        cc_oifs=$IFS
+    dt_rest=""
+    if [ -n "$dt_others" ]; then
+        dt_oifs=$IFS
         IFS='
 '
         set -f
         # shellcheck disable=SC2086
-        set -- $cc_others
+        set -- $dt_others
         set +f
-        IFS=$cc_oifs
-        for cc_w in "$@"; do
-            cc_wp=$(cd "$cc_w" 2>/dev/null && pwd -P) || cc_wp=""
-            if [ -z "$cc_wp" ] || [ "$cc_wp" = "$WT_ROOT" ]; then continue; fi
+        IFS=$dt_oifs
+        for dt_w in "$@"; do
+            dt_wp=$(cd "$dt_w" 2>/dev/null && pwd -P) || dt_wp=""
+            if [ -z "$dt_wp" ] || [ "$dt_wp" = "$WT_ROOT" ]; then continue; fi
             if [ "$ALL_WORKTREES" -eq 1 ]; then
-                cure_worktree "$cc_wp" "$cc_names"
+                detach_worktree "$dt_wp" "$dt_names"
             else
-                cc_rest="${cc_rest}${cc_rest:+
-}$cc_wp"
+                dt_rest="${dt_rest}${dt_rest:+
+}$dt_wp"
             fi
         done
     fi
@@ -917,15 +917,15 @@ cmd_cure() {
 
     if ! dry; then release_lock; fi
 
-    if [ -n "$cc_rest" ]; then
+    if [ -n "$dt_rest" ]; then
         say "$PROG: other worktrees of this clone still carry managed links:"
-        printf '%s\n' "$cc_rest" | sed 's/^/    /'
+        printf '%s\n' "$dt_rest" | sed 's/^/    /'
         say "         re-run with --all-worktrees to unlink them too"
     fi
     if dry; then
         say "$PROG: $CHANGED change(s) planned (dry run, nothing written)"
     else
-        say "$PROG: cured — $CHANGED change(s); the store at $STORE is untouched ('$PROG heal' restores everything)"
+        say "$PROG: detached — $CHANGED change(s); the store at $STORE is untouched ('$PROG heal' restores everything)"
     fi
 }
 
@@ -1002,7 +1002,7 @@ main() {
         adopt) cmd_adopt "$ARG1" ;;
         sync) cmd_sync ;;
         status) cmd_status ;;
-        cure) cmd_cure ;;
+        detach) cmd_detach ;;
         *)
             usage >&2
             die "unknown verb: $VERB"

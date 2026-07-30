@@ -75,7 +75,7 @@ and every created symlink is covered by the managed exclude block.
 
 ### Requirement: Mutating verbs serialize on a store lock
 
-Mutating verbs (`init`, `heal`, `adopt`, `sync`, `cure`) SHALL acquire an exclusive lock
+Mutating verbs (`init`, `heal`, `adopt`, `sync`, `detach`) SHALL acquire an exclusive lock
 scoped to the store before making changes, so concurrent invocations from different
 worktrees or sessions cannot interleave. If the lock cannot be acquired within a bounded
 wait, the verb SHALL exit non-zero naming the lock path.
