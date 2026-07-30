@@ -35,14 +35,20 @@ written to by `sync` beyond resolving the store location.
 ### Requirement: status reports store and link health
 
 `status` SHALL report, without changing anything: whether a store exists, dirty file
-count, unpushed commit count, behind-remote commit count (when cheaply determinable),
-and per-worktree link health (missing, wrong-target, or quarantine leftovers) for the
-current worktree.
+count, unpushed and behind-remote commit counts when a usable upstream or remote-tracking
+comparison exists (and an explicit `unknown` state otherwise), and per-worktree link health
+(missing, wrong-target, or quarantine leftovers) for the current worktree.
 
 #### Scenario: Unsynced work is visible
 
 - **WHEN** `status` runs with 3 modified store files and 2 unpushed commits
 - **THEN** the output states 3 dirty files and 2 unpushed commits
+
+#### Scenario: Publication state is unknown without a comparison ref
+
+- **WHEN** `status` runs for a store branch with no usable upstream or remote-tracking ref
+- **THEN** unpushed and behind state are reported as unknown rather than as false zero or
+  whole-history counts
 
 #### Scenario: No store initialized
 

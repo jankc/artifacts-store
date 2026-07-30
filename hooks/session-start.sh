@@ -8,6 +8,8 @@
 #
 set -u
 
+unset GIT_DIR GIT_COMMON_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY 2>/dev/null || true
+
 HOOK_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd -P) || exit 0
 ENGINE="$HOOK_DIR/../scripts/lnd-artifacts.sh"
 [ -f "$ENGINE" ] || exit 0

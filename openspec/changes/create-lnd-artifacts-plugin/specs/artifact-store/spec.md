@@ -94,5 +94,6 @@ take while changing nothing on disk (no clone, no links, no exclude edits, no co
 #### Scenario: Dry-run init
 
 - **WHEN** `init <url> --dry-run` runs in a host repository with no store
-- **THEN** the planned clone target, link names, and exclude entries are printed and no
-  filesystem or Git change occurs
+- **THEN** the remote URL and planned clone target are printed, along with the plan to link
+  every post-clone first-level store entry except `.git` and generate the managed exclude
+  block from that listing, and no filesystem, network, or Git change occurs

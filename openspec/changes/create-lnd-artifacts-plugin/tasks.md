@@ -39,3 +39,12 @@
 - [x] 6.2 Worktree pass in smoke: `git worktree add`, heal there, confirm shared store/exclude and per-worktree links; concurrent-lock check
 - [x] 6.3 Manual session test: `claude --plugin-dir` in a fixture repo — SessionStart heals a deleted link, Stop warns on dirty store, skill-guided init dialogue works
 - [x] 6.4 Initial commit of the plugin repo once smoke passes
+
+## 7. Verification remediation
+
+- [x] 7.1 Acquire the common-dir lock before inspecting mutable state in every mutating verb; add real concurrent `init` and `sync` regressions
+- [x] 7.2 Make `sync` integrate remote state before reporting success, handle missing upstreams honestly, and refuse safely during an active rebase
+- [x] 7.3 Preserve all `info/exclude` bytes outside the managed block, including a missing final newline
+- [x] 7.4 Report honest unpushed/behind state when the store branch has no configured upstream
+- [x] 7.5 Align the dry-run-init contract with a no-network generic post-clone plan and assert its output
+- [x] 7.6 Update conflict-recovery guidance and pass the expanded smoke suite plus strict verification

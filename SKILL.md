@@ -85,7 +85,10 @@ Every mutating verb takes `--dry-run`.
 - **"an artifact store already exists"** — use `heal`/`status`; `init` never overwrites.
 - **"could not acquire the store lock"** — another run is in progress; if the reported
   PID is dead, the message includes the exact `rm -rf` to clear it.
-- **rebase conflict during `sync`** — the store is left mid-rebase on purpose. Resolve it
-  inside the store (`git -C <store> status`), then run `sync` again. Do not force-push.
+- **rebase conflict during `sync`** — the store is left mid-rebase on purpose. Inspect it
+  with `git -C <store> status`, resolve and stage the files, then run
+  `git -C <store> rebase --continue` (repeat as needed), or abandon with
+  `git -C <store> rebase --abort`. Run `sync` again only after the rebase has finished or
+  been aborted. Do not force-push.
 - **`git clean -fdx` wiped the links** — expected; `heal` restores them, the store lives
   in `.git/` and survives.

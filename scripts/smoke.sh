@@ -99,6 +99,47 @@ is_link_to() { # is_link_to <link> <expected-target-path>
 
 engine() { sh "$ENGINE" "$@"; }
 
+wait_for_lock_waiters() { # wait_for_lock_waiters <log> <count>
+    wf_log=$1
+    wf_want=$2
+    wf_i=0
+    while [ "$wf_i" -lt 7 ]; do
+        wf_have=0
+        if [ -f "$wf_log" ]; then
+            wf_have=$(LC_ALL=C sort -u "$wf_log" | grep -c . || true)
+        fi
+        if [ "$wf_have" -ge "$wf_want" ]; then return 0; fi
+        wf_i=$((wf_i + 1))
+        sleep 1
+    done
+    return 1
+}
+
+# The engine's lock retry calls sleep only after a failed mkdir. Logging those
+# calls gives concurrent tests a deterministic "both are waiting" handshake.
+WAIT_BIN="$WORK/wait-bin"
+REAL_SLEEP=$(command -v sleep)
+REAL_GIT=$(command -v git)
+mkdir "$WAIT_BIN"
+cat >"$WAIT_BIN/sleep" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$PPID" >>"$LND_WAIT_LOG"
+exec "$LND_REAL_SLEEP" "$@"
+EOF
+chmod +x "$WAIT_BIN/sleep"
+cat >"$WAIT_BIN/git" <<'EOF'
+#!/bin/sh
+if [ "${LND_INTERRUPT_CLONE:-0}" -eq 1 ] && [ "${1:-}" = clone ]; then
+    for LND_ARG in "$@"; do LND_DEST=$LND_ARG; done
+    mkdir -p "$LND_DEST"
+    printf 'partial\n' >"$LND_DEST/partial"
+    kill -TERM "$PPID"
+    exec "$LND_REAL_SLEEP" 5
+fi
+exec "$LND_REAL_GIT" "$@"
+EOF
+chmod +x "$WAIT_BIN/git"
+
 # --- fixtures --------------------------------------------------------------
 
 GIT_AUTHOR_NAME=smoke
@@ -106,7 +147,9 @@ GIT_AUTHOR_EMAIL=smoke@example.invalid
 GIT_COMMITTER_NAME=smoke
 GIT_COMMITTER_EMAIL=smoke@example.invalid
 GIT_CONFIG_NOSYSTEM=1
-export GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL GIT_CONFIG_NOSYSTEM
+GIT_CONFIG_GLOBAL=/dev/null
+export GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
+export GIT_CONFIG_NOSYSTEM GIT_CONFIG_GLOBAL
 
 step "fixtures in $WORK"
 
@@ -128,7 +171,8 @@ printf 'app\n' >"$HOST/src/app.txt"
 printf 'readme\n' >"$HOST/README.md"
 git -C "$HOST" add -A
 git -C "$HOST" commit -qm "host project"
-printf '# user rule\n*.log\n' >>"$HOST/.git/info/exclude"
+printf '# user rule\n*.log' >>"$HOST/.git/info/exclude"
+cp "$HOST/.git/info/exclude" "$WORK/exclude.before"
 EXCLUDE_BEFORE=$(cat "$HOST/.git/info/exclude")
 
 cd "$HOST"
@@ -136,10 +180,16 @@ cd "$HOST"
 # --- init ------------------------------------------------------------------
 
 step "init --dry-run changes nothing"
-engine init "$REMOTE" --dry-run >/dev/null
+INIT_DRY=$(engine init "$REMOTE" --dry-run)
+case $INIT_DRY in
+    *"clone $REMOTE -> $STORE"*"post-clone first-level store entry"*"generate the managed block"*)
+        ok "dry-run init prints the no-network post-clone plan"
+        ;;
+    *) bad "dry-run init plan is incomplete (got: $INIT_DRY)" ;;
+esac
 check_not "no store created by dry run" test -e "$STORE"
 check_not "no link created by dry run" test -L "$HOST/.claude"
-eq "exclude untouched by dry run" "$EXCLUDE_BEFORE" "$(cat "$HOST/.git/info/exclude")"
+check "exclude bytes untouched by dry run" cmp -s "$WORK/exclude.before" "$HOST/.git/info/exclude"
 
 step "init clones and links"
 engine init "$REMOTE" >/dev/null
@@ -164,6 +214,114 @@ git init -q -b main "$WORK/other"
 git -C "$WORK/other" commit -q --allow-empty -m x
 (cd "$WORK/other" && check_not "bad clone exits non-zero" engine init "$WORK/does-not-exist.git")
 check_not "no partial store left behind" test -e "$WORK/other/.git/lundegaard"
+
+step "interrupted clone cleans up its partial store"
+INT_HOST="$WORK/interrupted-init"
+git init -q -b main "$INT_HOST"
+git -C "$INT_HOST" commit -q --allow-empty -m host
+if (
+    cd "$INT_HOST"
+    LND_INTERRUPT_CLONE=1
+    LND_REAL_GIT=$REAL_GIT
+    LND_REAL_SLEEP=$REAL_SLEEP
+    PATH="$WAIT_BIN:$PATH"
+    export LND_INTERRUPT_CLONE LND_REAL_GIT LND_REAL_SLEEP PATH
+    engine init "$REMOTE"
+) >"$WORK/interrupted-init.out" 2>&1; then
+    bad "interrupted init should exit non-zero"
+else
+    ok "interrupted init exits non-zero"
+fi
+check_not "interrupted init removes the partial store" test -e "$INT_HOST/.git/lundegaard"
+check_not "interrupted init releases the lock" test -e "$INT_HOST/.git/lundegaard.lock"
+
+step "concurrent init checks store absence under the lock"
+CI_HOST="$WORK/concurrent-init"
+git init -q -b main "$CI_HOST"
+git -C "$CI_HOST" commit -q --allow-empty -m host
+CI_LOCK="$CI_HOST/.git/lundegaard.lock"
+mkdir "$CI_LOCK"
+printf 'pid=%s\n' "$$" >"$CI_LOCK/owner"
+CI_WAIT="$WORK/init.wait"
+(
+    cd "$CI_HOST"
+    LND_WAIT_LOG=$CI_WAIT
+    LND_REAL_SLEEP=$REAL_SLEEP
+    LND_REAL_GIT=$REAL_GIT
+    PATH="$WAIT_BIN:$PATH"
+    export LND_WAIT_LOG LND_REAL_SLEEP LND_REAL_GIT PATH
+    engine init "$REMOTE"
+) >"$WORK/init-1.out" 2>&1 &
+CI_PID1=$!
+(
+    cd "$CI_HOST"
+    LND_WAIT_LOG=$CI_WAIT
+    LND_REAL_SLEEP=$REAL_SLEEP
+    LND_REAL_GIT=$REAL_GIT
+    PATH="$WAIT_BIN:$PATH"
+    export LND_WAIT_LOG LND_REAL_SLEEP LND_REAL_GIT PATH
+    engine init "$REMOTE"
+) >"$WORK/init-2.out" 2>&1 &
+CI_PID2=$!
+if wait_for_lock_waiters "$CI_WAIT" 2; then
+    ok "both concurrent init processes reached the held lock"
+else
+    bad "concurrent init processes did not both reach the held lock"
+fi
+rm -rf "$CI_LOCK"
+if wait "$CI_PID1"; then CI_RC1=0; else CI_RC1=$?; fi
+if wait "$CI_PID2"; then CI_RC2=0; else CI_RC2=$?; fi
+if { [ "$CI_RC1" -eq 0 ] && [ "$CI_RC2" -ne 0 ]; } ||
+   { [ "$CI_RC2" -eq 0 ] && [ "$CI_RC1" -ne 0 ]; }; then
+    ok "exactly one concurrent init succeeds"
+else
+    bad "concurrent init results should be one success and one refusal (got $CI_RC1/$CI_RC2)"
+fi
+check "winning concurrent store survives" test -d "$CI_HOST/.git/lundegaard/.git"
+check "winning concurrent init linked artifacts" is_link_to "$CI_HOST/.claude" "$CI_HOST/.git/lundegaard/.claude"
+case "$(cat "$WORK/init-1.out")$(cat "$WORK/init-2.out")" in
+    *"already exists"*) ok "losing concurrent init sees the completed store" ;;
+    *) bad "losing concurrent init should report the existing store" ;;
+esac
+host_clean "$CI_HOST" "after concurrent init"
+
+step "inherited git environment cannot redirect the store"
+ENV_STATUS=$(cd "$HOST" && GIT_COMMON_DIR="$CI_HOST/.git" engine status)
+case $ENV_STATUS in
+    *"store    : $STORE"*) ok "engine ignores inherited GIT_COMMON_DIR" ;;
+    *) bad "engine store resolution was redirected (got: $ENV_STATUS)" ;;
+esac
+rm "$HOST/.claude"
+(cd "$HOST" && GIT_COMMON_DIR="$CI_HOST/.git" sh "$HOOKS/session-start.sh") >/dev/null
+check "SessionStart ignores inherited GIT_COMMON_DIR" is_link_to "$HOST/.claude" "$STORE/.claude"
+
+step "an unborn store receives the remote's first commit"
+EMPTY_REMOTE="$WORK/empty-artifacts.git"
+EMPTY_HOST="$WORK/empty-host"
+FIRST_SEED="$WORK/first-seed"
+git init -q --bare -b main "$EMPTY_REMOTE"
+git init -q -b main "$EMPTY_HOST"
+git -C "$EMPTY_HOST" commit -q --allow-empty -m host
+(cd "$EMPTY_HOST" && engine init "$EMPTY_REMOTE") >/dev/null
+check_not "empty artifact store starts without HEAD" git -C "$EMPTY_HOST/.git/lundegaard" rev-parse --verify HEAD
+git init -q -b main "$FIRST_SEED"
+printf 'first\n' >"$FIRST_SEED/FIRST.md"
+git -C "$FIRST_SEED" add -A
+git -C "$FIRST_SEED" commit -qm "first artifact commit"
+git -C "$FIRST_SEED" remote add origin "$EMPTY_REMOTE"
+git -C "$FIRST_SEED" push -q -u origin main:published
+git -C "$EMPTY_HOST/.git/lundegaard" config branch.main.merge refs/heads/published
+FIRST_SYNC=$(cd "$EMPTY_HOST" && engine sync)
+eq "unborn sync receives the first remote artifact" "first" "$(cat "$EMPTY_HOST/.git/lundegaard/FIRST.md")"
+eq "unborn sync preserves the configured remote branch" "origin/published" \
+    "$(git -C "$EMPTY_HOST/.git/lundegaard" rev-parse --abbrev-ref --symbolic-full-name '@{u}')"
+case $FIRST_SYNC in
+    *"initialized from origin/published"*) ok "unborn sync reports the configured remote initialization" ;;
+    *) bad "unborn sync should report configured initialization (got: $FIRST_SYNC)" ;;
+esac
+(cd "$EMPTY_HOST" && engine heal >/dev/null)
+check "heal links the first remote artifact" is_link_to "$EMPTY_HOST/FIRST.md" "$EMPTY_HOST/.git/lundegaard/FIRST.md"
+host_clean "$EMPTY_HOST" "after first remote commit"
 
 # --- heal ------------------------------------------------------------------
 
@@ -190,6 +348,92 @@ case "$(engine sync)" in
     *"already in sync"*) ok "sync reports already in sync" ;;
     *) bad "sync should report already in sync" ;;
 esac
+SYNC_HEAD_BEFORE=$(git -C "$STORE" rev-parse HEAD)
+SYNC_DRY=$(engine sync --dry-run)
+case $SYNC_DRY in
+    *"pull --rebase from origin/main"*"push if commits remain ahead"*)
+        ok "dry-run sync includes remote integration"
+        ;;
+    *) bad "dry-run sync should include remote integration (got: $SYNC_DRY)" ;;
+esac
+eq "dry-run sync leaves HEAD unchanged" "$SYNC_HEAD_BEFORE" "$(git -C "$STORE" rev-parse HEAD)"
+
+step "clean sync integrates remote-only work before reporting success"
+git -C "$SEED" pull -q --rebase
+printf 'remote-only\n' >"$SEED/openspec/remote-only.txt"
+git -C "$SEED" add -A
+git -C "$SEED" commit -qm "remote-only change"
+git -C "$SEED" push -q
+CLEAN_BEHIND_OUT=$(engine sync)
+eq "clean-behind sync receives the remote file" "remote-only" "$(cat "$STORE/openspec/remote-only.txt")"
+eq "clean-behind sync reaches remote HEAD" "$(git -C "$REMOTE" rev-parse main)" "$(git -C "$STORE" rev-parse HEAD)"
+case $CLEAN_BEHIND_OUT in
+    *"updated the local store"*) ok "clean-behind sync reports the remote update" ;;
+    *) bad "clean-behind sync should report an update (got: $CLEAN_BEHIND_OUT)" ;;
+esac
+host_clean "$HOST" "after clean-behind sync"
+
+step "configured upstream wins even before its tracking ref exists"
+BACKUP_REMOTE="$WORK/backup-artifacts.git"
+git clone -q --bare "$REMOTE" "$BACKUP_REMOTE"
+git -C "$BACKUP_REMOTE" update-ref refs/heads/published refs/heads/main
+git -C "$STORE" remote add backup "$BACKUP_REMOTE"
+git -C "$STORE" config branch.main.remote backup
+git -C "$STORE" config branch.main.merge refs/heads/published
+check_not "backup tracking ref is initially absent" git -C "$STORE" show-ref --verify --quiet refs/remotes/backup/published
+printf 'backup-only\n' >"$HOST/.claude/backup-only.txt"
+BACKUP_SYNC=$(engine sync)
+eq "configured backup branch receives the artifact" "backup-only" "$(git -C "$BACKUP_REMOTE" show published:.claude/backup-only.txt)"
+check_not "origin is not selected over the configured backup" git -C "$REMOTE" cat-file -e main:.claude/backup-only.txt
+case $BACKUP_SYNC in
+    *"pull --rebase from backup/published"*"pushed"*"backup/published"*) ok "sync honors the configured backup upstream branch" ;;
+    *) bad "sync should use the configured backup upstream (got: $BACKUP_SYNC)" ;;
+esac
+git -C "$STORE" push -q origin main
+git -C "$STORE" config branch.main.remote origin
+git -C "$STORE" config branch.main.merge refs/heads/main
+git -C "$STORE" remote remove backup
+
+step "sync and status recover a missing upstream"
+git -C "$STORE" branch --unset-upstream
+eq "Stop stays silent when origin/main proves a no-upstream branch is pushed" "" "$(sh "$HOOKS/stop.sh")"
+printf 'no-upstream\n' >"$HOST/.claude/no-upstream.txt"
+mkdir "$HOST/.claude/untracked-files"
+printf 'one\n' >"$HOST/.claude/untracked-files/one"
+printf 'two\n' >"$HOST/.claude/untracked-files/two"
+printf 'three\n' >"$HOST/.claude/untracked-files/three"
+case "$(engine status)" in
+    *"dirty    : 4 file(s) uncommitted"*) ok "status counts files inside untracked directories" ;;
+    *) bad "status should count every untracked file" ;;
+esac
+git -C "$STORE" add -A
+git -C "$STORE" commit -qm "local commit without upstream"
+NOUP_STATUS=$(engine status)
+case $NOUP_STATUS in
+    *"unpushed : 1 commit(s) relative to origin/main"*) ok "status compares an untracked branch to origin/main" ;;
+    *) bad "status should report the unpushed commit without an upstream (got: $NOUP_STATUS)" ;;
+esac
+NOUP_SYNC=$(engine sync)
+eq "sync restores the upstream" "origin/main" "$(git -C "$STORE" rev-parse --abbrev-ref --symbolic-full-name '@{u}')"
+eq "remote receives no-upstream work" "no-upstream" "$(git -C "$REMOTE" show main:.claude/no-upstream.txt)"
+case $NOUP_SYNC in
+    *"configured the upstream"*) ok "sync reports upstream configuration" ;;
+    *) bad "sync should report upstream configuration (got: $NOUP_SYNC)" ;;
+esac
+
+step "status is honest when no remote or tracking ref exists"
+ORIGIN_URL=$(git -C "$STORE" remote get-url origin)
+git -C "$STORE" remote remove origin
+LOCAL_ONLY_STATUS=$(engine status)
+case $LOCAL_ONLY_STATUS in
+    *"unpushed : unknown (no usable upstream/tracking ref)"*"behind   : unknown"*)
+        ok "status reports unknown publication state without a comparison ref"
+        ;;
+    *) bad "status should report unknown local-only state (got: $LOCAL_ONLY_STATUS)" ;;
+esac
+git -C "$STORE" remote add origin "$ORIGIN_URL"
+git -C "$STORE" fetch -q origin
+git -C "$STORE" branch --set-upstream-to=origin/main main >/dev/null
 
 step "sync surfaces a rebase conflict without pushing"
 git -C "$SEED" pull -q --rebase
@@ -200,6 +444,18 @@ printf 'local side\n' >"$HOST/CLAUDE.md"
 check_not "conflicting sync exits non-zero" engine sync
 check "store left mid-rebase for manual fixing" test -n "$(git -C "$STORE" diff --name-only --diff-filter=U)"
 eq "nothing was pushed" "remote side" "$(git -C "$REMOTE" show main:CLAUDE.md)"
+REBASE_HEAD=$(git -C "$STORE" rev-parse HEAD)
+if engine sync >"$WORK/rebase-retry.out" 2>&1; then
+    bad "sync should refuse while a rebase is active"
+else
+    ok "sync refuses while a rebase is active"
+fi
+eq "active-rebase refusal leaves HEAD unchanged" "$REBASE_HEAD" "$(git -C "$STORE" rev-parse HEAD)"
+check "active-rebase refusal preserves conflicts" test -n "$(git -C "$STORE" diff --name-only --diff-filter=U)"
+case "$(cat "$WORK/rebase-retry.out")" in
+    *"rebase --continue"*"rebase --abort"*) ok "active-rebase refusal prints recovery commands" ;;
+    *) bad "active-rebase refusal should print continue and abort guidance" ;;
+esac
 git -C "$STORE" rebase --abort
 git -C "$STORE" reset -q --hard origin/main
 engine heal >/dev/null
@@ -283,8 +539,52 @@ step "edits made in the worktree are the same files"
 printf 'from-worktree\n' >"$WT/.claude/settings.json"
 eq "main worktree sees the edit" "from-worktree" "$(cat "$HOST/.claude/settings.json")"
 
-step "concurrent runs serialize on the store lock"
+step "concurrent sync recomputes state after acquiring the lock"
 LOCKDIR="$HOST/.git/lundegaard.lock"
+SYNC_COMMITS_BEFORE=$(git -C "$STORE" rev-list --count HEAD)
+mkdir "$LOCKDIR"
+printf 'pid=%s\n' "$$" >"$LOCKDIR/owner"
+SYNC_WAIT="$WORK/sync.wait"
+(
+    cd "$HOST"
+    LND_WAIT_LOG=$SYNC_WAIT
+    LND_REAL_SLEEP=$REAL_SLEEP
+    LND_REAL_GIT=$REAL_GIT
+    PATH="$WAIT_BIN:$PATH"
+    export LND_WAIT_LOG LND_REAL_SLEEP LND_REAL_GIT PATH
+    engine sync
+) >"$WORK/sync-1.out" 2>&1 &
+SYNC_PID1=$!
+(
+    cd "$WT"
+    LND_WAIT_LOG=$SYNC_WAIT
+    LND_REAL_SLEEP=$REAL_SLEEP
+    LND_REAL_GIT=$REAL_GIT
+    PATH="$WAIT_BIN:$PATH"
+    export LND_WAIT_LOG LND_REAL_SLEEP LND_REAL_GIT PATH
+    engine sync
+) >"$WORK/sync-2.out" 2>&1 &
+SYNC_PID2=$!
+if wait_for_lock_waiters "$SYNC_WAIT" 2; then
+    ok "both concurrent sync processes reached the held lock"
+else
+    bad "concurrent sync processes did not both reach the held lock"
+fi
+rm -rf "$LOCKDIR"
+if wait "$SYNC_PID1"; then SYNC_RC1=0; else SYNC_RC1=$?; fi
+if wait "$SYNC_PID2"; then SYNC_RC2=0; else SYNC_RC2=$?; fi
+eq "first concurrent sync succeeds" "0" "$SYNC_RC1"
+eq "second concurrent sync succeeds after rechecking state" "0" "$SYNC_RC2"
+eq "concurrent sync creates one commit" "$((SYNC_COMMITS_BEFORE + 1))" "$(git -C "$STORE" rev-list --count HEAD)"
+eq "concurrent sync publishes the edit" "from-worktree" "$(git -C "$REMOTE" show main:.claude/settings.json)"
+case "$(cat "$WORK/sync-1.out")$(cat "$WORK/sync-2.out")" in
+    *"nothing to commit, working tree clean"*) bad "concurrent sync must not use stale dirty state" ;;
+    *) ok "concurrent sync avoids stale empty commits" ;;
+esac
+host_clean "$HOST" "main worktree after concurrent sync"
+host_clean "$WT" "linked worktree after concurrent sync"
+
+step "concurrent runs serialize on the store lock"
 mkdir "$LOCKDIR"
 printf 'pid=%s\n' "$$" >"$LOCKDIR/owner"
 LOCKOUT=$( (cd "$WT" && engine heal 2>&1) || true)
@@ -368,6 +668,7 @@ check_not "main worktree link gone" test -L "$HOST/.claude"
 check_not "worktree link gone" test -L "$WT/.claude"
 check_not "managed block gone" grep -Fq ">>> lnd-artifacts managed >>>" "$HOST/.git/info/exclude"
 eq "user exclude rules still intact" "$EXCLUDE_BEFORE" "$(cat "$HOST/.git/info/exclude")"
+check "user exclude bytes restored exactly" cmp -s "$WORK/exclude.before" "$HOST/.git/info/exclude"
 check "store untouched by detach" test -f "$STORE/.claude/settings.json"
 host_clean "$HOST" "after detach"
 
