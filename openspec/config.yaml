@@ -1,0 +1,44 @@
+schema: spec-driven
+
+context: |
+  This repo IS a Claude Code plugin (lnd-artifacts): one POSIX script
+  (scripts/lnd-artifacts.sh), one root SKILL.md, hooks/hooks.json.
+  It manages per-project AI artifacts in a private repo cloned into the host
+  project's git common dir (.git/lundegaard), symlinks its first-level entries
+  (except .git) into the project root, and maintains a marker-delimited block in
+  <common-dir>/info/exclude.
+  Settled constraints: POSIX shell + git + coreutils only; hooks never commit/push
+  (SessionStart=heal, Stop=warn-only); 1 artifact repo = 1 customer project; store
+  root is payload-only; never mutate the host repository; quarantine, never delete.
+  History, reasoning, and prior-art references (ailien, lnd-core): docs/CONTEXT.md.
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
