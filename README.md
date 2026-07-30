@@ -39,13 +39,16 @@ customer-project/
 # 1. load the plugin (session-only, no marketplace needed)
 claude --plugin-dir /path/to/lnd-artifacts
 
-# 2. inside the customer project, ask Claude to set up artifact management,
-#    or run the engine directly:
-/path/to/lnd-artifacts/scripts/lnd-artifacts.sh init git@host:team/project-artifacts.git
+# 2. inside the customer project, just ask Claude to set up artifact management —
+#    the skill knows where the engine lives. Or run it yourself:
+$ENGINE init git@host:team/project-artifacts.git
 
 # 3. work normally; when you want to publish artifact changes:
-/path/to/lnd-artifacts/scripts/lnd-artifacts.sh sync
+$ENGINE sync
 ```
+
+`$ENGINE` is whatever stable path you pin for `scripts/lnd-artifacts.sh` — see
+[Invoking the engine outside a session](#invoking-the-engine-outside-a-session).
 
 ## Verbs
 
@@ -59,6 +62,81 @@ claude --plugin-dir /path/to/lnd-artifacts
 | `detach` | Remove the managed links and the exclude block. The store is left untouched — `heal` restores everything. |
 
 Every mutating verb accepts `--dry-run` and prints the full plan without touching disk.
+
+## Invoking the engine outside a session
+
+Inside a Claude session you never need a path — the skill resolves the engine through
+`${CLAUDE_PLUGIN_ROOT}`. Outside one (shell, git hook, worktree-init tooling, Codex)
+there is no discovery mechanism that spans agents, so **pin one stable path yourself**.
+
+Three paths that look tempting and are not stable:
+
+| Path | Why not |
+| --- | --- |
+| `~/.claude/plugins/cache/<mkt>/lnd-artifacts/<version>/…` | version-pinned; moves on every upgrade |
+| `~/.claude/skills/lnd-artifacts/…` | tied to one `CLAUDE_CONFIG_DIR`; invisible to sessions using another |
+| `${CLAUDE_PLUGIN_ROOT}/…` | only set while a Claude hook or skill is running |
+
+What works is one indirection you control. If you keep an agent-neutral skills directory,
+point it at the checkout and have each agent's config dir hop through it:
+
+```sh
+ln -s /path/to/lnd-artifacts            ~/.agents/skills/lnd-artifacts
+ln -s ../../.agents/skills/lnd-artifacts ~/.claude/skills/lnd-artifacts
+ln -s ../../.agents/skills/lnd-artifacts ~/.claude-work/skills/lnd-artifacts
+```
+
+Anything under `~/.claude*/skills/` auto-loads as a plugin (`<name>@skills-dir`) with its
+skill and hooks, no marketplace needed. The canonical engine path is then:
+
+```sh
+ENGINE="$HOME/.agents/skills/lnd-artifacts/scripts/lnd-artifacts.sh"
+```
+
+Move the checkout later and you fix one symlink. Referencing the checkout directly works
+too — the engine is self-contained POSIX shell and doesn't care where it is called from.
+
+### New worktrees without an agent
+
+`heal` takes no arguments: it resolves the store from the current directory, so any
+worktree-init hook that runs with the new worktree as its cwd is enough. For example, in
+worktrunk:
+
+```toml
+[[pre-start]]
+lnd-artifacts = "$HOME/.agents/skills/lnd-artifacts/scripts/lnd-artifacts.sh heal"
+```
+
+Better still, let git do it with no per-tool config. `git worktree add` fires
+`post-checkout` with the new worktree as cwd, and hooks live in the common dir, so one
+file covers every worktree of the clone:
+
+```sh
+cat > "$(git rev-parse --git-common-dir)/hooks/post-checkout" <<'EOF'
+#!/bin/sh
+[ "$3" = 1 ] || exit 0            # branch checkouts only, not `git checkout -- <file>`
+"$HOME/.agents/skills/lnd-artifacts/scripts/lnd-artifacts.sh" heal --quiet 2>/dev/null || true
+exit 0
+EOF
+chmod +x "$(git rev-parse --git-common-dir)/hooks/post-checkout"
+```
+
+This also repairs links on a plain `git switch`. Before using it, check that:
+
+- `git config core.hooksPath` is unset — husky/lefthook redirect hooks and this file
+  would never run;
+- the project has no existing `post-checkout` — append the two lines instead of
+  overwriting;
+- you keep the `2>/dev/null || true`: in a repo without a store `heal` exits non-zero,
+  and you do not want that noise on every checkout.
+
+`git worktree add --no-checkout` does not fire the hook, and the hook is per-project —
+install it once in each repo where you want it.
+
+Without either of these the SessionStart hook still heals the worktree, but only once an
+agent starts there — and that first session will not yet have the store's `CLAUDE.md` as
+project instructions, because instruction files are collected before the hook restores
+the link. Healing up front avoids that.
 
 ## Conventions and constraints
 
