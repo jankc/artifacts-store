@@ -8,20 +8,26 @@ first-level entries symlinked into the project root and ignored via a managed bl
 
 ## Current state
 
-- `create-lnd-artifacts-plugin` is IMPLEMENTED and committed (all verbs, hooks, smoke
-  suite). Its design decisions D1–D8 are settled — don't relitigate them.
-- Two follow-up changes are IMPLEMENTED and verified (uncommitted, pending archive),
-  in dependency order:
-  1. `vendor-engine-for-agentless-bootstrap` — vendor the engine into the git common
-     dir (decisions B1–B7) + dual-runtime repo layout (B8–B9: `skills/<name>/SKILL.md`,
+- **No active changes.** All four are implemented, verified and archived under
+  `openspec/changes/archive/`; the merged behaviour lives in `openspec/specs/`
+  (artifact-store, artifact-linking, artifact-sync, artifact-bootstrap,
+  codex-runtime, plugin-integration). Read those specs first — they are the current
+  contract. The archived changes carry the reasoning:
+  1. `create-lnd-artifacts-plugin` — all verbs, hooks, smoke suite (decisions D1–D8).
+  2. `vendor-engine-for-agentless-bootstrap` — vendor the engine into the git common
+     dir (B1–B7) + dual-runtime repo layout (B8–B9: `skills/<name>/SKILL.md`,
      Codex mirror manifest).
-  2. `add-codex-runtime-support` — make the skill work under Codex (decisions C1–C4:
+  3. `add-codex-runtime-support` — make the skill work under Codex (C1–C4:
      runtime-neutral engine resolution, hook-compensation rules, verified discovery).
+  4. `add-help-command` — the read-only `/lnd-artifacts:help` command (H1–H5), plus
+     the step-1 engine-resolution fix: `CLAUDE_PLUGIN_ROOT` is never in the agent's
+     shell, only substituted into skill/command text at render time.
+- Those decisions are settled — don't relitigate them.
 - For any change, read `proposal.md` → `design.md` → `specs/*/spec.md` → `tasks.md`,
   in that order.
 - `docs/CONTEXT.md` holds the history and reasoning behind the settled decisions,
-  prior-art references (ailien, lnd-core), and verified Claude Code plugin mechanics.
-  Read it before questioning any design choice.
+  prior-art references (ailien, lnd-core), verified Claude Code plugin mechanics, and
+  §6 the deferred multi-repo analysis. Read it before questioning any design choice.
 
 ## Hard constraints (from decisions already made with Jan)
 
