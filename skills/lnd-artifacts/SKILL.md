@@ -13,18 +13,22 @@ nothing ever reaches the customer's remote.
 The engine is a POSIX script. Resolve `$ENGINE` in this order, and stop at the first
 step that yields an existing file:
 
-1. **`${CLAUDE_PLUGIN_ROOT}/scripts/lnd-artifacts.sh`** — when `CLAUDE_PLUGIN_ROOT` is
-   set (a Claude Code session). Always current with the installed plugin.
+1. **`${CLAUDE_PLUGIN_ROOT}/scripts/lnd-artifacts.sh`** — the plugin's own engine, always
+   current with the installed plugin. The runtime substitutes the plugin's absolute path
+   into this text before you read it (Claude Code does; nothing is read from the shell
+   environment), so in a Claude session the path below is already absolute and passes
+   `[ -x ]`. A runtime that substitutes nothing leaves a path that cannot exist, and
+   resolution falls through to step 2.
 2. **`$(git rev-parse --git-common-dir)/lundegaard.engine.sh`** — otherwise (Codex or any
    other runtime). Every initialized project carries this vendored copy; it works
    identically in every runtime and in every worktree.
 3. **Ask the user** for the path to the engine or to the plugin checkout. This case is
    the first-ever `init` in a project outside Claude Code: no store exists yet, so there
-   is nothing vendored, and there is no plugin variable to read. Never guess install
+   is nothing vendored, and step 1 was left unsubstituted. Never guess install
    locations and never search the filesystem for the checkout.
 
 ```sh
-ENGINE="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts/lnd-artifacts.sh}"
+ENGINE="${CLAUDE_PLUGIN_ROOT}/scripts/lnd-artifacts.sh"
 [ -x "$ENGINE" ] || ENGINE="$(git rev-parse --git-common-dir)/lundegaard.engine.sh"
 ```
 
@@ -105,10 +109,12 @@ Every mutating verb takes `--dry-run`.
 
 ## Initialization dialogue
 
-0. Resolve `$ENGINE`. If `CLAUDE_PLUGIN_ROOT` is unset **and** there is no vendored
-   engine in the git common dir — the first-ever `init` outside Claude Code — say so and
-   ask the user where the plugin lives, e.g. "I need the path to the lnd-artifacts
-   engine (`<checkout>/scripts/lnd-artifacts.sh`) — where is the checkout?". If they have
+0. Resolve `$ENGINE`. If step 1's path was never substituted — it still reads
+   `${CLAUDE_PLUGIN_ROOT}/…`, so no runtime told you where the plugin lives — **and** there
+   is no vendored engine in the git common dir, this is the first-ever `init` outside
+   Claude Code: say so and ask the user where the plugin lives, e.g. "I need the path to
+   the lnd-artifacts engine (`<checkout>/scripts/lnd-artifacts.sh`) — where is the
+   checkout?". If they have
    the agent-neutral skills directory wired, the answer is
    `~/.agents/skills/lnd-artifacts/scripts/lnd-artifacts.sh`. Do not search for it and do
    not proceed without an answer; after `init` the vendored copy makes every later run in

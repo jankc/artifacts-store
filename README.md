@@ -40,8 +40,9 @@ customer-project/
 # 1. load the plugin (session-only, no marketplace needed)
 claude --plugin-dir /path/to/lnd-artifacts
 
-# 2. inside the customer project, just ask Claude to set up artifact management —
-#    the skill knows where the engine lives. Or run it yourself:
+# 2. inside the customer project, run /lnd-artifacts:help for what this is, the live
+#    artifact status and the verb list. Then just ask Claude to set up artifact
+#    management — the skill knows where the engine lives. Or run it yourself:
 $ENGINE init git@host:team/project-artifacts.git
 
 # 3. work normally; when you want to publish artifact changes:
@@ -68,8 +69,9 @@ Every mutating verb accepts `--dry-run` and prints the full plan without touchin
 
 ## Invoking the engine outside a session
 
-Inside a Claude session you never need a path — the skill resolves the engine through
-`${CLAUDE_PLUGIN_ROOT}`. Outside one (shell, git hook, worktree-init tooling, Codex),
+Inside a Claude session you never need a path — Claude Code substitutes the plugin's
+absolute path into the skill text, so the skill reaches the plugin's own engine. Outside
+one (shell, git hook, worktree-init tooling, Codex),
 **do not reference the plugin at all**: `init` leaves a runnable copy of the engine in the
 project's git common dir, and that copy is what every external caller should use.
 
@@ -87,7 +89,7 @@ Why not just pin a plugin path? Because none of them is stable:
 | --- | --- |
 | `~/.claude/plugins/cache/<mkt>/lnd-artifacts/<version>/…` | version-pinned; moves on every upgrade |
 | `~/.claude/skills/lnd-artifacts/…` | tied to one `CLAUDE_CONFIG_DIR`; invisible to sessions using another |
-| `${CLAUDE_PLUGIN_ROOT}/…` | only set while a Claude hook or skill is running |
+| `${CLAUDE_PLUGIN_ROOT}/…` | substituted into Claude skill and command text, and set for hook processes — never present in the shell you or an agent types into |
 
 Publishing the plugin to a marketplace makes this worse, not better — the install path
 then carries a version component that changes under your feet.
@@ -156,9 +158,11 @@ the link. Healing up front avoids that.
 
 ## Codex
 
-The skill is runtime-neutral: it resolves the engine through `${CLAUDE_PLUGIN_ROOT}` when
-that variable is set and through the vendored copy in the git common dir otherwise, so a
-Codex session drives every verb in any initialized project.
+The skill is runtime-neutral: its first engine candidate is the plugin path the runtime
+substitutes into the skill text (Claude Code does this; Codex does not), and a candidate
+that fails `[ -x ]` falls through to the vendored copy in the git common dir — so a Codex
+session drives every verb in any initialized project. `/lnd-artifacts:help` is Claude-only:
+Codex loads `skills/` and never sees `commands/`.
 
 ### Wiring
 
@@ -239,7 +243,9 @@ Layout:
 ```
 .claude-plugin/plugin.json      Claude Code manifest
 .codex-plugin/plugin.json       Codex mirror manifest (same name/version/description)
-skills/lnd-artifacts/SKILL.md   the single skill that drives the engine
+skills/lnd-artifacts/SKILL.md   the skill that drives the engine
+commands/help.md                /lnd-artifacts:help — live status + verbs, read-only,
+                                Claude Code only (Codex loads skills/ only)
 scripts/lnd-artifacts.sh        the engine (all verbs)
 scripts/smoke.sh                end-to-end test on throwaway fixtures
 hooks/hooks.json                SessionStart (heal) + Stop (warn)

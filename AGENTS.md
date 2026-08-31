@@ -1,9 +1,10 @@
 # lnd-artifacts — agent instructions
 
-This repository IS a Claude Code plugin (single skill + one POSIX script + two hooks)
-that manages per-project AI artifacts: a private artifact repo cloned into the host
-project's git common dir (`.git/lundegaard`), with its first-level entries symlinked
-into the project root and ignored via a managed block in `.git/info/exclude`.
+This repository IS a Claude Code plugin (one skill + one read-only `/lnd-artifacts:help`
+command + one POSIX script + two hooks) that manages per-project AI artifacts: a private
+artifact repo cloned into the host project's git common dir (`.git/lundegaard`), with its
+first-level entries symlinked into the project root and ignored via a managed block in
+`.git/info/exclude`.
 
 ## Current state
 
