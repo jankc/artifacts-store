@@ -1,0 +1,189 @@
+<title>Umístění artefaktového storu</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#f6f7f4; --card:#ffffff; --ink:#232a26; --muted:#5c6660;
+  --line:#dde2dc; --accent:#37655a; --accent-ink:#2a5148;
+  --ok:#2f7d44; --ok-bg:#e6f2e8; --part:#a06f1f; --part-bg:#f7eeda; --fail:#b04a3a; --fail-bg:#f7e5e1;
+  --quote-bg:#eef1ec; --mono-bg:#eef1ec;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#161b18; --card:#1e2420; --ink:#e4e8e2; --muted:#9aa59d;
+    --line:#333b35; --accent:#7bb5a6; --accent-ink:#8fc4b6;
+    --ok:#7ec98f; --ok-bg:#22352a; --part:#d9ae5f; --part-bg:#38301d; --fail:#e08a7a; --fail-bg:#3b2622;
+    --quote-bg:#232a25; --mono-bg:#232a25;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#161b18; --card:#1e2420; --ink:#e4e8e2; --muted:#9aa59d;
+  --line:#333b35; --accent:#7bb5a6; --accent-ink:#8fc4b6;
+  --ok:#7ec98f; --ok-bg:#22352a; --part:#d9ae5f; --part-bg:#38301d; --fail:#e08a7a; --fail-bg:#3b2622;
+  --quote-bg:#232a25; --mono-bg:#232a25;
+}
+body{background:var(--paper); color:var(--ink); font-family:"Source Sans 3",-apple-system,"Segoe UI",sans-serif;
+  font-size:16.5px; line-height:1.55; margin:0;}
+main{max-width:920px; margin:0 auto; padding:48px 24px 96px;}
+h1,h2,h3{font-family:"Bricolage Grotesque","Source Sans 3",sans-serif; text-wrap:balance; line-height:1.15;}
+h1{font-size:2.3rem; font-weight:800; margin:.2em 0 .3em;}
+h2{font-size:1.45rem; font-weight:650; margin:2.6em 0 .6em; padding-top:1.2em; border-top:1px solid var(--line);}
+h3{font-size:1.08rem; font-weight:650; margin:1.6em 0 .4em;}
+p{max-width:70ch; margin:.6em 0;}
+.eyebrow{font-size:.78rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink); font-weight:700; margin-bottom:.6em;}
+.lede{font-size:1.12rem; color:var(--muted); max-width:66ch;}
+code, .path{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:.85em; background:var(--mono-bg);
+  padding:.1em .35em; border-radius:4px; white-space:nowrap;}
+.verdictbox{background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent);
+  border-radius:8px; padding:18px 22px; margin:28px 0;}
+.verdictbox p{margin:.4em 0;}
+.pill{display:inline-block; font-size:.78rem; font-weight:700; padding:.12em .6em; border-radius:99px; white-space:nowrap;}
+.pill.ok{color:var(--ok); background:var(--ok-bg);}
+.pill.part{color:var(--part); background:var(--part-bg);}
+.pill.fail{color:var(--fail); background:var(--fail-bg);}
+.tablewrap{overflow-x:auto; margin:1.2em 0; border:1px solid var(--line); border-radius:8px; background:var(--card);}
+table{border-collapse:collapse; width:100%; font-size:.9rem;}
+th,td{text-align:left; padding:9px 13px; border-top:1px solid var(--line); vertical-align:top;}
+thead th{border-top:none; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
+td.req{font-weight:600;}
+blockquote{background:var(--quote-bg); border-left:3px solid var(--accent); margin:1em 0; padding:10px 16px;
+  border-radius:0 6px 6px 0; font-size:.95rem;}
+blockquote .src{display:block; margin-top:.4em; color:var(--muted); font-size:.8rem; font-family:"IBM Plex Mono",monospace; white-space:normal;}
+blockquote p{margin:.2em 0;}
+ul{padding-left:1.3em; max-width:72ch;}
+li{margin:.35em 0;}
+.cols{display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; margin:1.2em 0;}
+@media (max-width:820px){.cols{grid-template-columns:1fr;}}
+.col{background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 18px;}
+.col h3{margin-top:.2em;}
+.col .tag{font-family:"IBM Plex Mono",monospace; font-size:.75rem; color:var(--muted); display:block; margin-bottom:.4em;}
+.footnote{color:var(--muted); font-size:.85rem; margin-top:3em; border-top:1px solid var(--line); padding-top:1em; max-width:75ch;}
+strong{font-weight:700;}
+</style>
+<main>
+<div class="eyebrow">Podklad k týmové diskusi · 1. 9. 2026 · doplněk ke srovnání mp-temp × lnd-artifacts</div>
+<h1>Umístění artefaktového storu</h1>
+<p class="lede">Podrobný rozbor tří možností, kde na disku žije lokální klon artefaktového storu: v git common diru (<code>.git/lundegaard</code>), v pracovním stromě (<code>.lundegaard/</code>), nebo mimo repo ve sdíleném adresáři (<code>~/.lnd/stores/…</code>).</p>
+
+<div class="verdictbox">
+<p><strong>Souhrn:</strong> pro per-projektový store vychází nejlépe <strong>git common dir</strong> — jako jediné umístění řeší worktrees bez konfigurace, je strukturálně neodeslatelné na klientský remote a nepotřebuje žádný mapovací stav. Jeho reálné slabiny (ztráta neodeslaných změn při smazání <code>.git</code>, zálohy, archiv checkoutu včetně <code>.git</code>) jsou známé a mitigovatelné. <strong><code>~/.lnd</code> mimo repo</strong> má dvě skutečné výhody — store přežije checkout a obsah není v archivu checkoutu — ale platí za ně mapovacím stavem, úklidem a koncentrací všech klientů do jednoho místa; je to <em>nutné</em> umístění, pokud je store sdílený mezi projekty. <strong><code>.lundegaard/</code> v pracovním stromě</strong> je dominované řešení: kombinuje nevýhody obou a přidává vlastní (git clean, worktrees, <code>git add -f</code>); v podobě lnd-core v1 už selhalo.</p>
+</div>
+
+<h2>1 · Tři kandidáti a jedna poznámka předem</h2>
+<div class="cols">
+<div class="col"><span class="tag">A</span><h3>.git/lundegaard</h3>
+<p>Klon storu uvnitř git common diru hostitelského repa. Symlinky z rootu worktree dovnitř. Dnešní model lnd-artifacts.</p></div>
+<div class="col"><span class="tag">B</span><h3>.lundegaard/ v pracovním stromě</h3>
+<p>Klon storu jako ignorovaný adresář vedle kódu. Symlinky z rootu na jeho obsah. Model lnd-core v1 (opuštěný).</p></div>
+<div class="col"><span class="tag">C</span><h3>~/.lnd/stores/&lt;jméno&gt;</h3>
+<p>Klon storu úplně mimo repo, v domovském adresáři. Symlinky z rootu checkoutu ven z repa. Dnešní model mp-temp.</p></div>
+</div>
+<p><strong>Umístění ≠ topologie.</strong> Otázka „kde leží klon“ je nezávislá na otázce „jeden store per projekt, nebo sdílený pool“. Per-projektový store může ležet kdekoli z A/B/C; sdílený store mezi projekty <em>vynucuje</em> C (nemá „svoje“ repo, do jehož <code>.git</code> by patřil). mp-temp tedy C nezvolil kvůli kvalitám umístění — vyplynulo z topologie. Tento rozbor srovnává umístění za předpokladu per-projektového storu; kde je vlastnost důsledkem sdílené topologie, je to řečeno.</p>
+<p>Ve všech třech modelech se artefakty do checkoutu promítají symlinky z rootu — rozdíl je jen v tom, kam linky vedou. Vlastnosti symlinků (nástroje je nenásledují bez <code>-L</code>, openspec CLI je u change adresářů přeskakuje) jsou tedy společné a v rozhodnutí nehrají roli.</p>
+
+<h2>2 · Souhrnná tabulka</h2>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Dimenze</th><th>A · .git/lundegaard</th><th>B · .lundegaard/</th><th>C · ~/.lnd</th></tr></thead>
+<tbody>
+<tr><td class="req">Git worktrees</td><td><span class="pill ok">zdarma</span> common dir je sdílený</td><td><span class="pill fail">selhává</span> kopie per worktree</td><td><span class="pill ok">funguje</span> nutný mapovací stav per worktree</td></tr>
+<tr><td class="req">Strukturální ochrana před commitem</td><td><span class="pill ok">ano</span> obsah v .git</td><td><span class="pill fail">ne</span> git add -f přidá obsah</td><td><span class="pill ok">ano</span> obsah mimo repo</td></tr>
+<tr><td class="req">git clean -ffdx</td><td><span class="pill ok">imunní</span></td><td><span class="pill fail">smaže store</span></td><td><span class="pill ok">imunní</span> (jen linky, heal je vrátí)</td></tr>
+<tr><td class="req">rm -rf .git / nuke-and-reclone</td><td><span class="pill fail">ztratí nepushnuté</span></td><td><span class="pill part">přežije .git, ne smazání adresáře</span></td><td><span class="pill ok">přežije</span></td></tr>
+<tr><td class="req">Archiv checkoutu (tar vč. .git), image build</td><td><span class="pill part">obsah jde s .git</span></td><td><span class="pill fail">obsah jde vždy</span></td><td><span class="pill ok">jen dangling linky</span></td></tr>
+<tr><td class="req">Mapování checkout → store</td><td><span class="pill ok">žádné</span> pozice = mapa</td><td><span class="pill ok">žádné</span></td><td><span class="pill fail">nutný stav</span> (config keyed by path/remote)</td></tr>
+<tr><td class="req">Přesun/přejmenování checkoutu</td><td><span class="pill ok">store jde s ním</span></td><td><span class="pill ok">store jde s ním</span></td><td><span class="pill part">linky přežijí, mapovací stav se musí obnovit</span></td></tr>
+<tr><td class="req">Více checkoutů téhož repa</td><td><span class="pill part">store per klon, sync přes remote</span></td><td><span class="pill part">store per checkout</span></td><td><span class="pill ok">jeden klon pro všechny</span></td></tr>
+<tr><td class="req">Multi-repo projekt (1 store, N rep)</td><td><span class="pill part">klon per repo, propagace přes remote</span></td><td><span class="pill part">totéž</span></td><td><span class="pill ok">jeden lokální klon</span></td></tr>
+<tr><td class="req">Životnost / úklid</td><td><span class="pill ok">zaniká s projektem</span> (remote = záloha)</td><td><span class="pill ok">zaniká s projektem</span></td><td><span class="pill fail">sirotci</span> — přežívá, nikdo neuklízí</td></tr>
+<tr><td class="req">Koncentrace důvěrných dat</td><td><span class="pill ok">per projekt</span></td><td><span class="pill ok">per projekt</span></td><td><span class="pill fail">všichni klienti v jednom stromě</span></td></tr>
+<tr><td class="req">Zálohy stroje</td><td><span class="pill part">nástroje .git přeskakují</span></td><td><span class="pill ok">zálohuje se s projektem</span></td><td><span class="pill ok">běžný adresář</span></td></tr>
+<tr><td class="req">Viditelnost pro nástroje v pracovním stromě</td><td><span class="pill ok">skrytý</span></td><td><span class="pill fail">viditelný</span> — lintery, globy, indexace</td><td><span class="pill ok">skrytý</span></td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>3 · Rozbor po dimenzích</h2>
+
+<h3>3.1 Git worktrees</h3>
+<p><code>git rev-parse --git-common-dir</code> z libovolného worktree vede do <code>.git</code> hlavního klonu. Store v common diru (A) tak <strong>všechny worktrees sdílejí automaticky</strong> — bez konfigurace, bez stavu; per-worktree jsou jen symlinky, které vytvoří heal. Zároveň <code>info/exclude</code> žije tamtéž, takže jeden managed blok kryje všechny worktrees. B je přesný opak: pracovní strom se mezi worktrees nesdílí, každý worktree by měl vlastní klon storu a vlastní divergenci — přesně na tomhle lnd-core v1 selhal a byl opuštěn. C funguje (obsah je mimo repo), ale musí si per checkout/worktree pamatovat, který store k němu patří — v mp-temp je to config klíčovaný hashem absolutní cesty, takže potvrzení storu se odpovídá v každém worktree zvlášť.</p>
+
+<h3>3.2 Ochrana před odesláním na klientský remote</h3>
+<p>Všechny tři modely spoléhají na managed blok v <code>.git/info/exclude</code> pro symlinky v rootu. Rozdíl je v tom, co se stane, když ochrana selže (blok někdo smaže, <code>git add -f</code>):</p>
+<ul>
+<li><strong>A a C:</strong> commitnout jde nejvýš symlink — git ho uloží jako soubor s textem cílové cesty (mode 120000). Uniká tedy jen řetězec cesty, nikdy obsah. U A navíc obsah leží pod <code>.git/</code>, kam git z principu žádnou cestou nesáhne.</li>
+<li><strong>B:</strong> <code>.lundegaard/</code> je skutečný adresář v pracovním stromě — <code>git add -f .lundegaard</code> commitne <em>celý obsah storu</em> do klientského repa. Jediný model, kde selhání ignorace znamená únik obsahu, ne jen cesty.</li>
+</ul>
+
+<h3>3.3 Destruktivní operace v pracovním stromě</h3>
+<p><code>git clean -ffdx</code> (běžný „scorched earth“ recept, mj. v CI úklidech — druhé <code>-f</code> existuje právě kvůli mazání vnořených rep) u B smaže store včetně nepushnutých commitů. A i C jsou imunní: clean smaže jen symlinky, které heal idempotentně obnoví. <code>git stash --all</code> vnořené repo přeskakuje (ověřeno na git 2.50.1), ale spoléhat na to u B znamená spoléhat na detail chování gitu.</p>
+
+<h3>3.4 Zničení klonu: rm -rf .git, nuke-and-reclone</h3>
+<p>Nejsilnější argument proti A: kdo smaže <code>.git</code> nebo celý checkout a naklonuje znovu, přijde o <strong>nepushnuté</strong> změny storu — store bydlel uvnitř. C tady vítězí: store přežije jakoukoli manipulaci s checkoutem. Váhu argumentu snižují tři věci: remote storu je vždy zdrojem pravdy (ztratit jde jen to, co nebylo synchronizováno); Stop hook na nesynchronizovaný stav hlasitě upozorňuje; a „smazal jsem projekt“ u per-projektových artefaktů znamená ztrátu dat i v C — jen odloženě (viz 3.7). Pro B platí horší varianta: přežije sice smazání samotného <code>.git</code>, ale ne smazání adresáře projektu ani clean.</p>
+
+<h3>3.5 Archiv checkoutu a image build</h3>
+<p>Požadavkový dokument (R6) žádá minimalizaci rizik mimo git právě umístěním storu. Zde je pořadí opačné než jinde:</p>
+<ul>
+<li><strong>C:</strong> tar/zip adresáře i <code>docker COPY . .</code> vezmou jen symlinky, které mimo původní stroj nikam nevedou. Obsah neunikne. Nejčistší.</li>
+<li><strong>A:</strong> <code>git archive</code> bere jen trackované soubory — bezpečné. Ale prostý tar adresáře nebo image build, který nevyloučí <code>.git</code>, přibalí i store. Mitigace je konvenční (<code>.dockerignore</code> s <code>.git</code> je standard, artefakty pro klienta se z <code>.git</code> nestaví), ne strukturální.</li>
+<li><strong>B:</strong> reálný adresář jde do každého taru a každého image, a na rozdíl od <code>.git</code> ho žádná konvence nevylučuje.</li>
+</ul>
+
+<h3>3.6 Mapování, stav a identita</h3>
+<p>U A (i B) je pozice storu zároveň mapou: „store tohoto checkoutu“ je deterministická funkce <code>git rev-parse</code>, žádný konfigurační stav neexistuje, tudíž nemůže být zastaralý, ztracený ani ukazovat jinam. C potřebuje odpověď na „který store patří k tomuhle checkoutu“ uloženou bokem — klíčovanou cestou (mp-temp: hash absolutní cesty; rozbije se přesunem checkoutu), nebo remote URL (robustnější, ale řeší kolize dvou checkoutů s různou rolí). Je to druhý zdroj pravdy se všemi režimy driftu, které A strukturálně nemá.</p>
+
+<h3>3.7 Životnost, úklid, koncentrace dat</h3>
+<p>A váže život lokálního klonu storu na život projektu na disku: smazáním projektu zmizí i jeho artefakty (remote zůstává). To je zároveň úklid i offboarding — po konci práce na klientovi nezůstává na stroji nic. C store od projektu odděluje: přežije reclone (výhoda), ale nikdo ho nikdy nesmaže (sirotci v <code>~/.lnd/stores</code> po dávno opuštěných projektech) a všichni klienti leží v jednom podstromě domovského adresáře — jedno místo, jeden blast radius při kompromitaci stroje, jedna položka pro exfiltraci. U per-klientských důvěrných dat je rozptýlení po projektech (A) konzervativnější default.</p>
+
+<h3>3.8 Více checkoutů a multi-repo projekty</h3>
+<p>Jediná kategorie, kde C strukturálně vede. Dva klony téhož repa na jednom stroji (mimo worktrees) mají v A dva store klony a vidí se navzájem až přes remote; v C sdílejí jeden lokální klon a změny jsou viditelné okamžitě. Totéž pro projekt rozprostřený přes N repozitářů: A klonuje tentýž store do každého repa (funguje bez úprav — init se stejnou URL; propagace přes sync), C má jeden lokální klon pro všechny. Protiváha: sdílený lokální klon je zase sdílený mutable stav — souběžné sessions přes projekty se musí serializovat globálním lockem a nehody typu „unscoped <code>git checkout -- .</code> v klonu“ zasáhnou cizí projekt (mp-temp na obojí má kód i komentáře). V A je lock i poškození vždy omezené na jeden projekt.</p>
+
+<h3>3.9 Zálohy a vyhledávání</h3>
+<p>Drobnosti, ale reálné: zálohovací nástroje často přeskakují <code>.git</code> — store v A se nezálohuje (mitigace: remote je záloha; eager sync). C i B se zálohují normálně. Vyhledávací nástroje nesledují symlinky (<code>rg -L</code>) — společné všem třem modelům.</p>
+
+<h2>4 · Historická poznámka</h2>
+<p>Varianta B není hypotéza — byla to první verze lnd-core (store v <code>.lundegaard/</code>, symlinky přes <code>linked/</code> mapu) a opustila se právě kvůli worktrees a nutnosti per-worktree klonů a ignorací. Předchůdcem dnešního A byl plán <code>lnd-store-in-git-common-dir</code> v ai-marketplace repu, který myšlenku common diru validoval; mp-temp mezitím přešel na C spolu s přechodem na sdílenou topologii. Známé slabiny C v mp-temp (stav klíčovaný hashem cesty, per-worktree potvrzování) jsou implementační volby, ne nutné vlastnosti umístění — férové srovnání s C počítá s tím, že by šly udělat lépe.</p>
+
+<h2>5 · Závěr</h2>
+<ul>
+<li><strong>Per-projektový store → A (<code>.git/lundegaard</code>).</strong> Jediné umístění, které současně řeší worktrees bez stavu, strukturálně brání úniku obsahu do klientského repa a nepotřebuje mapování. Akceptované náklady: nepushnuté změny nepřežijí zničení <code>.git</code> (mitigace: Stop warning, status, návyk syncovat), <code>.git</code> v záloze/taru (mitigace: remote, konvence <code>.dockerignore</code>).</li>
+<li><strong>C (<code>~/.lnd</code>) je legitimní tam, kde platí jeho předpoklady:</strong> sdílená topologie (pak je jedinou možností), silný důraz na přežití storu nezávisle na checkoutu, nebo časté image buildy z adresářů včetně <code>.git</code>. Cena: mapovací stav, globální lock, úklid a koncentrace klientských dat. Úplný výčet scénářů, které by C vyžadovaly, rozebírá kapitola 6.</li>
+<li><strong>B (<code>.lundegaard/</code> v pracovním stromě) nedoporučit:</strong> nemá žádnou dimenzi, ve které by bylo nejlepší, a je jediné, kde <code>git clean</code> maže store a <code>git add -f</code> commitne obsah. Empiricky už jednou selhalo.</li>
+</ul>
+
+<h2>6 · Kdy je C skutečně nutné — a případ multi-repo projektů</h2>
+
+<h3>6.1 Scénáře, které by vyžadovaly umístění mimo repo</h3>
+<p><strong>Tvrdě vynucují C</strong> (store nemá žádné <code>.git</code>, do kterého by patřil):</p>
+<ul>
+<li><strong>Sdílený pool mezi klienty/projekty</strong> (mp-temp default) — store nepatří žádnému hostitelskému repu. Zároveň jediný scénář, který požadavky (R4, R5) zakazují.</li>
+<li><strong>Artefakty k něčemu, co není git repo</strong> (složka dokumentace bez checkoutu) — okrajové, mimo dnešní scope.</li>
+<li><strong>Efemérní checkouty</strong> (CI runnery, zahazované devcontainery) — v A se store zahazuje s checkoutem a každý start klonuje znovu; C funguje jako lokální cache. Vývojářských strojů se netýká.</li>
+</ul>
+<p><strong>Vyžadují C jen při konkrétním výkladu požadavku:</strong></p>
+<ul>
+<li><strong>Okamžitá lokální propagace</strong> mezi repy projektu nebo mezi dvěma klony téhož repa — bez remote round-tripu. Pokud stačí propagace přes remote (jeden <code>sync</code>), C není potřeba — viz 6.2.</li>
+<li><strong>Lokální přežití nepushnutých změn</strong> i po zničení checkoutu — jestli je to požadavek, nebo akceptovaný náklad s mitigací (Stop warning), je rozhodnutí k diskusi (3.4).</li>
+</ul>
+<p><strong>Tlačí k C, ale mají lepší alternativy:</strong></p>
+<ul>
+<li>Velké artefakty (grafy, binární exporty) a deduplikace disku → velké artefakty do storu nepatří (LFS, artefaktové úložiště).</li>
+<li>Lokální nástroje čtoucí napříč projekty (harvester, graph-joiner) → enumerace přes GitLab nebo server-side mirror/gateway; vytěžování stejně míří na sdílenou infrastrukturu, ne na laptop.</li>
+<li>Rutinní tary/image buildy včetně <code>.git</code> → primárně konvence (<code>.dockerignore</code>), viz 3.5.</li>
+</ul>
+<p><strong>Co C nevyžaduje, i když to tak vypadá:</strong> sdílení v týmu (řeší remote), worktrees (A nativně), zálohy (remote je záloha), přesun checkoutu (v A jde store s ním).</p>
+
+<h3>6.2 Multi-repo projekty fungují nad A</h3>
+<p>Frontend řeší více aplikací zpravidla monorepem; v Javě je běžné obojí — Maven/Gradle multi-module projekt (ekvivalent monorepa), ale u microservice a enterprise projektů často repo per service plus infra repo. Klientský projekt tak může být hrst repozitářů. Pro monorepo je otázka triviální (jedno repo = jeden store); multi-repo je jediný případ, který vyžaduje rozmysl.</p>
+<p>Klíčové pozorování: „sdílet artefakty mezi repy“ v silném smyslu (stejné soubory nalinkované všude) je potřeba jen pro malou podmnožinu. Artefakty se dělí na <strong>per-repo</strong> (<code>CLAUDE.md</code> dané codebase, <code>.claude/</code>, openspec changes služby — linkovat je křížem by bylo aktivně špatně) a <strong>per-projekt</strong> (PRD, doménový slovník, architektonická rozhodnutí přesahující služby — ty chce agent v každém repu). Cíl tedy není synchronizovat totéž všude, ale mít všechny artefakty projektu <em>na jedné hromadě v jednom artefakt-repu</em> — kvůli uchování know-how (nový správce klonuje jedno repo a vidí celý projekt) i vytěžování.</p>
+<p>Model nad A (analyzováno v lnd-artifacts <span class="path">docs/CONTEXT.md §6</span>, funguje bez změny enginu):</p>
+<ul>
+<li>jedno artefakt-repo per projekt; <code>init &lt;stejná URL&gt;</code> v každém hostitelském repu (klon v jeho <code>.git/lundegaard</code>),</li>
+<li><strong>větev per hostitelské repo + větev <code>common</code></strong>, ze které se merguje; heal linkuje strom checkoutnuté větve, takže každé repo dostane jen svou sadu,</li>
+<li>proč větve, ne podadresáře: první úroveň store rootu = manifest linků, podadresáře by se nalinkovaly do každého repa všechny — a filtr „která složka patří komu“ by znamenal manifest, tedy druhý zdroj pravdy. Strom větve je výběr, git je mechanismus.</li>
+</ul>
+<p>Oproti C je horší jen dvojí: propagace jde přes remote (repo B vidí push z repa A až po vlastním <code>sync</code>; auto-pull v hooku byl zamítnut záměrně — hooky nesmí mutovat store) a N klonů na disku (u textových artefaktů zanedbatelné). Lepší je naopak izolace selhání (lock i případné poškození klonu per repo, ne per projekt) a nulový mapovací stav. Přijaté náklady: změna v <code>common</code> = N mergů; a žádný projekt takhle zatím reálně neběží — je to analýza, ne ověřená praxe.</p>
+<p><strong>Důsledek pro celkové rozhodnutí:</strong> multi-repo projekt nevyžaduje ani C, ani sdílený pool — stačí „1 store = 1 klientský projekt“ s větvemi. Jediným tvrdým důvodem pro C tak zůstává sdílený pool mezi klienty, který požadavky zakazují.</p>
+
+<p class="footnote">Zdroje: lnd-artifacts docs/CONTEXT.md (§2 — ověřené chování git clean/stash na git 2.50.1, §6 — multi-repo analýza) · audit mp-temp @ 4279b83 (_state.sh, lnd-bootstrap.sh, lnd-spec-sync.sh, transport.md) · lnd-core v1 v ai-marketplace (reference) · DLVR-Požadavky na správu AI a projektových artefaktů, R6. Navazuje na dokument „mp-temp × lnd-artifacts“ z téhož dne.</p>
+</main>

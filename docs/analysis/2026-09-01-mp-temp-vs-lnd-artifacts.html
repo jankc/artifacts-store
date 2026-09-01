@@ -1,0 +1,252 @@
+<title>mp-temp × lnd-artifacts</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,650;12..96,800&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#f6f7f4; --card:#ffffff; --ink:#232a26; --muted:#5c6660;
+  --line:#dde2dc; --accent:#37655a; --accent-ink:#2a5148;
+  --ok:#2f7d44; --ok-bg:#e6f2e8; --part:#a06f1f; --part-bg:#f7eeda; --fail:#b04a3a; --fail-bg:#f7e5e1;
+  --quote-bg:#eef1ec; --mono-bg:#eef1ec;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#161b18; --card:#1e2420; --ink:#e4e8e2; --muted:#9aa59d;
+    --line:#333b35; --accent:#7bb5a6; --accent-ink:#8fc4b6;
+    --ok:#7ec98f; --ok-bg:#22352a; --part:#d9ae5f; --part-bg:#38301d; --fail:#e08a7a; --fail-bg:#3b2622;
+    --quote-bg:#232a25; --mono-bg:#232a25;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#161b18; --card:#1e2420; --ink:#e4e8e2; --muted:#9aa59d;
+  --line:#333b35; --accent:#7bb5a6; --accent-ink:#8fc4b6;
+  --ok:#7ec98f; --ok-bg:#22352a; --part:#d9ae5f; --part-bg:#38301d; --fail:#e08a7a; --fail-bg:#3b2622;
+  --quote-bg:#232a25; --mono-bg:#232a25;
+}
+body{background:var(--paper); color:var(--ink); font-family:"Source Sans 3",-apple-system,"Segoe UI",sans-serif;
+  font-size:16.5px; line-height:1.55; margin:0;}
+main{max-width:900px; margin:0 auto; padding:48px 24px 96px;}
+h1,h2,h3{font-family:"Bricolage Grotesque","Source Sans 3",sans-serif; text-wrap:balance; line-height:1.15;}
+h1{font-size:2.3rem; font-weight:800; margin:.2em 0 .3em;}
+h2{font-size:1.45rem; font-weight:650; margin:2.6em 0 .6em; padding-top:1.2em; border-top:1px solid var(--line);}
+h3{font-size:1.08rem; font-weight:650; margin:1.6em 0 .4em;}
+p{max-width:70ch; margin:.6em 0;}
+.eyebrow{font-size:.78rem; letter-spacing:.14em; text-transform:uppercase; color:var(--accent-ink); font-weight:700; margin-bottom:.6em;}
+.lede{font-size:1.12rem; color:var(--muted); max-width:66ch;}
+code, .path{font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:.85em; background:var(--mono-bg);
+  padding:.1em .35em; border-radius:4px; white-space:nowrap;}
+.verdictbox{background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent);
+  border-radius:8px; padding:18px 22px; margin:28px 0;}
+.verdictbox p{margin:.4em 0;}
+.pill{display:inline-block; font-size:.78rem; font-weight:700; padding:.12em .6em; border-radius:99px; white-space:nowrap;}
+.pill.ok{color:var(--ok); background:var(--ok-bg);}
+.pill.part{color:var(--part); background:var(--part-bg);}
+.pill.fail{color:var(--fail); background:var(--fail-bg);}
+.tablewrap{overflow-x:auto; margin:1.2em 0; border:1px solid var(--line); border-radius:8px; background:var(--card);}
+table{border-collapse:collapse; width:100%; font-size:.92rem;}
+th,td{text-align:left; padding:9px 14px; border-top:1px solid var(--line); vertical-align:top;}
+thead th{border-top:none; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; color:var(--muted);}
+td.req{font-weight:600; white-space:nowrap;}
+td small{color:var(--muted); display:block; font-weight:400; white-space:normal;}
+blockquote{background:var(--quote-bg); border-left:3px solid var(--accent); margin:1em 0; padding:10px 16px;
+  border-radius:0 6px 6px 0; font-size:.95rem;}
+blockquote .src{display:block; margin-top:.4em; color:var(--muted); font-size:.8rem; font-family:"IBM Plex Mono",monospace; white-space:normal;}
+blockquote p{margin:.2em 0;}
+.argument{background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px 20px; margin:14px 0;}
+.argument h3{margin-top:0;}
+.topic{margin:14px 0; padding:14px 18px; background:var(--card); border:1px solid var(--line); border-radius:8px;}
+.topic .t{font-weight:700; margin:0 0 .4em; color:var(--accent-ink);}
+.topic p{margin:.3em 0;}
+ul{padding-left:1.3em; max-width:72ch;}
+li{margin:.35em 0;}
+.cols{display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:1.2em 0;}
+@media (max-width:720px){.cols{grid-template-columns:1fr;}}
+.col{background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 18px;}
+.col h3{margin-top:.2em;}
+.footnote{color:var(--muted); font-size:.85rem; margin-top:3em; border-top:1px solid var(--line); padding-top:1em; max-width:75ch;}
+strong{font-weight:700;}
+</style>
+<main>
+<div class="eyebrow">Podklad k týmové diskusi · 1. 9. 2026 · verze 2</div>
+<h1>mp-temp × lnd-artifacts</h1>
+<p class="lede">Vyhodnocení dvou existujících řešení správy projektových artefaktů proti dokumentu „Požadavky na správu AI a projektových artefaktů“ (17 požadavků: R0a/R0b + R1–R15), souhrn silných stránek obou a návrh dalšího postupu. Auditované stavy: mp-temp @ <code>4279b83</code> (30. 8. 2026), lnd-artifacts @ <code>743eff9</code>.</p>
+
+<div class="verdictbox">
+<p><strong>Souhrn:</strong> mp-temp plní <strong>8 ze 17 požadavků plně, 4 částečně a 5 neplní</strong> — z toho tři (konfigurovatelné typy, univerzálnost, izolace klientů) jsou důsledkem záměrných architektonických rozhodnutí zaznamenaných v jeho vlastních OpenSpec dokumentech, a vratnost (R14) chybí zcela. lnd-artifacts plní <strong>12 plně, 5 částečně, žádný neporušuje</strong>; hlavní mezery jsou secret scan, CI a automatika synchronizace.</p>
+<p><strong>Rámování:</strong> nejde o dvě implementace téhož. mp-temp je sdílený firemní znalostní pool s governance a harvestingem, jehož součástí je transport; lnd-artifacts je pouze transport. Největší pokrytí požadavků dává kombinace obou: transport lnd-artifacts, guardy a testovací disciplína mp-temp, harvesting jako vrstva nad tím.</p>
+</div>
+
+<h2>1 · Co se srovnává</h2>
+<div class="cols">
+<div class="col"><h3>mp-temp (lnd-meta-core)</h3>
+<ul>
+<li>Transport je částí pluginu <code>lnd-meta-core</code>, vedle governance, sign-offů a harvestingu (celkem 14 pluginů).</li>
+<li>Engine <code>lnd-spec-sync.sh</code>: 4 510 řádků bashe (verze 114), povinná závislost na Pythonu.</li>
+<li>Store: jeden sdílený klon pro všechny projekty na stroji (<code>~/.lnd/stores/…</code>), dělený cestami <code>specs-store/&lt;area&gt;/&lt;plugin&gt;/&lt;slug&gt;</code>.</li>
+<li>Sync automatický: SessionStart pull, Stop hook auto-commit + auto-push, za tty potvrzovací bránou.</li>
+<li>Spravuje pevný seznam: openspec, .specify, specs, lnd-doc, grafy. CLAUDE.md, .claude/, MEMORY.md, .mcp.json nespravuje.</li>
+</ul></div>
+<div class="col"><h3>lnd-artifacts</h3>
+<ul>
+<li>Jediný účel: transport artefaktů. Bez governance a harvestingu — záměrně.</li>
+<li>Engine: 1 282 řádků POSIX sh, závislost jen git + coreutils; vendoruje se do <code>.git/</code>, funguje i bez pluginu a agenta.</li>
+<li>Store: 1 privátní repo = 1 klientský projekt, klon v <code>.git/lundegaard</code> (git common dir → sdílení mezi worktrees, strukturálně necommitovatelné).</li>
+<li>Sync: heal automatický (SessionStart), publish explicitní — Stop hook jen varuje.</li>
+<li>Spravuje libovolnou cestu (<code>adopt</code>): první úroveň store rootu = manifest.</li>
+</ul></div>
+</div>
+
+<h2>2 · Scorecard proti požadavkům</h2>
+<p><span class="pill ok">splňuje</span> <span class="pill part">částečně</span> <span class="pill fail">nesplňuje</span> — evidence = cesty v příslušném repu.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Požadavek</th><th>mp-temp</th><th>lnd-artifacts</th><th>Poznámka</th></tr></thead>
+<tbody>
+<tr><td class="req">R0a Konfigurovatelné typy</td><td><span class="pill fail">nesplňuje</span></td><td><span class="pill ok">splňuje</span></td>
+<td>mp-temp: seznam natvrdo na 3 místech enginu (<span class="path">lnd-bootstrap.sh:143</span>, <span class="path">lnd-spec-sync.sh:3725, :3287</span>); nový typ = zásah do enginu. lnd-artifacts: <code>adopt &lt;cesta&gt;</code> na cokoli.</td></tr>
+<tr><td class="req">R0b Nulový overhead</td><td><span class="pill ok">splňuje</span><small>po potvrzení</small></td><td><span class="pill part">částečně</span><small>záměrně</small></td>
+<td>mp-temp po jednorázovém tty potvrzení plně automatický. lnd-artifacts: heal automatický, publish = 1 příkaz, Stop hook připomíná (zjištění Z4).</td></tr>
+<tr><td class="req">R1 Univerzálnost (cesty, ne kategorie)</td><td><span class="pill fail">nesplňuje</span><small>záměrně</small></td><td><span class="pill ok">splňuje</span></td>
+<td>mp-temp proposal: „No visible store folder, no user-facing adopt.“ Generický mechanismus uvnitř existuje, uživatel se k němu nedostane.</td></tr>
+<tr><td class="req">R2 Kompatibilita (konvenční cesty)</td><td><span class="pill ok">splňuje</span></td><td><span class="pill ok">splňuje</span></td>
+<td>Oba linkují artefakty do rootu checkoutu pod nativními jmény, bez konfigurace nástrojů.</td></tr>
+<tr><td class="req">R3 Vlastnictví (žádná stopa v klientském repu)</td><td><span class="pill ok">splňuje</span></td><td><span class="pill ok">splňuje</span></td>
+<td>Oba: pouze <code>.git/info/exclude</code>, nic committovaného. lnd-artifacts navíc: obsah storu je uvnitř <code>.git/</code>, tedy strukturálně necommitovatelný.</td></tr>
+<tr><td class="req">R4 Oprávnění na úrovni projektu</td><td><span class="pill fail">nesplňuje</span></td><td><span class="pill ok">splňuje</span><small>topologií</small></td>
+<td>Přístup se přiděluje na úrovni projektu (skupina s více repozitáři); store má být jedním z repozitářů projektu. mp-temp: jeden store pro všechny projekty nemůže patřit do žádné projektové skupiny; per-caller scoping jen jako nenasazený prototyp (<span class="path">tools/store-gateway</span>: „working prototype, never deployed“). lnd-artifacts: store 1 : 1 se do projektové skupiny zařadit dá a oprávnění zdědí. Není to ale prostá kopie oprávnění repa a má to konsekvence — viz téma T1.</td></tr>
+<tr><td class="req">R5 Izolace klientů (hranice úložiště)</td><td><span class="pill fail">nesplňuje</span><small>default sdílený</small></td><td><span class="pill ok">splňuje</span><small>konstrukcí</small></td>
+<td>mp-temp: izolace je opt-in (<code>declare-store &lt;url&gt;</code>); default je sdílený pool dělený jen adresářovou strukturou — přesně to, co R5 zakazuje (Z2).</td></tr>
+<tr><td class="req">R6 Ochrana proti úniku</td><td><span class="pill part">částečně</span></td><td><span class="pill part">částečně</span></td>
+<td>mp-temp: silná vrstva 1 + otestovaný secret scan a brzda hromadného mazání; ale doctor exclude blok nekontroluje a grafy se stagují <code>git add -A</code>. lnd-artifacts: silná strukturální ochrana (store v <code>.git/</code>, karanténa, odmítání tracked cest), ale chybí secret scan před pushem.</td></tr>
+<tr><td class="req">R7 Explicitní souhlas, min. konfigurace</td><td><span class="pill ok">splňuje</span></td><td><span class="pill ok">splňuje</span></td>
+<td>Oba: nic bez explicitní inicializace, jediný parametr = URL storu. Kredit mp-temp: tty brána + retroaktivní revokace potvrzení.</td></tr>
+<tr><td class="req">R8 Minimální tření, worktrees</td><td><span class="pill part">částečně</span></td><td><span class="pill ok">splňuje</span></td>
+<td>mp-temp řeší worktree exclude správně (common dir, pokryto testem), ale potvrzení storu je per-worktree a onboarding má 2–3 kroky vč. reálného terminálu. lnd-artifacts: worktrees jsou důvod celého designu; nový worktree = SessionStart heal, bez agenta 1 vendorovaný příkaz.</td></tr>
+<tr><td class="req">R9 Fail-soft</td><td><span class="pill ok">splňuje</span></td><td><span class="pill ok">splňuje</span></td>
+<td>mp-temp bohatší (per-file parking konfliktů, retry na dalším Stopu). lnd-artifacts: lock, konflikt se ohlásí a nechá k ručnímu řešení, nic se neztrácí.</td></tr>
+<tr><td class="req">R10 Jedno vlastnictví transportu</td><td><span class="pill ok">splňuje</span></td><td><span class="pill ok">splňuje</span></td>
+<td>mp-temp: 1 engine + shimy, self-install; přiznaná 4× duplikace secret patternů. lnd-artifacts: 1 skript; vendorovaná kopie je verzovaná cache obnovovaná healem.</td></tr>
+<tr><td class="req">R11 Přenositelnost</td><td><span class="pill part">částečně</span></td><td><span class="pill part">částečně</span></td>
+<td>mp-temp: +Windows (junctions „UNVERIFIED“), −povinný Python. lnd-artifacts: POSIX sh + git, Claude i Codex ověřeny end-to-end, −Windows.</td></tr>
+<tr><td class="req">R12 Pozorovatelnost</td><td><span class="pill part">částečně</span></td><td><span class="pill part">částečně</span></td>
+<td>mp-temp doctor (775 ř.) kontroluje hodně, ale ne exclude blok — invariant č. 1. lnd-artifacts <code>status</code> je užší, pokrývá store/linky/engine; heal exclude přepisuje idempotentně.</td></tr>
+<tr><td class="req">R13 Testovatelnost (e2e v CI)</td><td><span class="pill ok">splňuje</span></td><td><span class="pill part">částečně</span></td>
+<td>mp-temp vede: 23 suit (~5 500 ř.), 5 CI jobů. lnd-artifacts: 834řádkový e2e smoke, ale zatím žádná pipeline.</td></tr>
+<tr><td class="req">R14 Migrace a vratnost</td><td><span class="pill fail">nesplňuje</span></td><td><span class="pill ok">splňuje</span></td>
+<td>mp-temp nemá uninstall/teardown; <code>declare-store off</code> nechá symlinky do <code>~/.lnd/stores</code> žít (brána končí před unlinkem, <span class="path">:1336</span>), exclude blok se neodstraňuje. lnd-artifacts: <code>detach</code> ↔ <code>heal</code> round-trip je specifikovaný a testovaný.</td></tr>
+<tr><td class="req">R15 Vytěžitelnost</td><td><span class="pill ok">splňuje</span><small>pohodlněji</small></td><td><span class="pill ok">splňuje</span><small>věrněji vůči ACL</small></td>
+<td>mp-temp: 1 klon = celý pool. lnd-artifacts: standardní struktura per projekt; harvester enumeruje repa přes naming konvenci — čte přes stejná ACL jako lidé, jak R15 výslovně požaduje.</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Součet:</strong> mp-temp 8 ✓ · 4 ◐ · 5 ✗ — lnd-artifacts 12 ✓ · 5 ◐ · 0 ✗. Tři z pěti ✗ u mp-temp nejsou bugy, ale zaznamenaná designová rozhodnutí — nezmizí opravou, jen změnou architektury.</p>
+
+<h2>3 · Klíčová zjištění</h2>
+
+<div class="argument"><h3>Z1 — Požadavky R0a a R1 jsou v mp-temp odmítnuty designovým rozhodnutím</h3>
+<blockquote><p>„Synced set stays a fixed, curated whitelist (engine-defined: <code>openspec/</code>, <code>.specify/</code>, <code>specs/</code>, plus <code>lnd-doc/</code>). No visible store folder, no user-facing <code>adopt</code>. A new shareable artifact type is added by a deliberate, reviewed engine change.“
+<span class="src">mp-temp: openspec/changes/store-topology-and-linked/proposal.md</span></blockquote>
+<p>Důsledek proti kapitole „Co jsou artefakty“: mp-temp nespravuje CLAUDE.md, .claude/, MEMORY.md, .mcp.json, .superset/ ani orca.yaml — první dvě kategorie z definice. Dokument přitom říká „množina artefaktů není uzavřená“; v mp-temp každé rozšíření znamená zásah do enginu na třech místech.</p></div>
+
+<div class="argument"><h3>Z2 — Sdílený store je v rozporu s R4 + R5 a rizika se už materializovala</h3>
+<p>Default je jeden firemní store pro všechny projekty, oddělené jen adresáři; vynucení hranic je podle vlastní dokumentace sociální („…informed socially by the area leaders — there is no central enforcement“). Incident, který R5 předjímá, se už stal:</p>
+<blockquote><p>„11 Aug: 94 files and 10 007 lines of a client's specifications left the store in one such push.“ … blocked-clients.json: „Empty on 2026-08-18: the one entry (Ceska posta) came from an afternoon when 94 files of a client's specifications had just left the store.“
+<span class="src">mp-temp: lnd-spec-sync.sh:3487 · governance/blocked-clients.json</span></blockquote>
+<p>Mitigace: aktuálně prázdný blocklist, tty prompt (vlastními slovy „a speed bump, not a lock“) a nenasazená gateway. Model 1 repo = 1 klient tuto třídu selhání ruší konstrukcí — hranice transportu = hranice úložiště s vlastními ACL, což je doslovná formulace R5. Per-klientské story ostatně předjímá i samotný požadavkový dokument (úkol „naming conventions pro artefakt stores repa / per client“).</p></div>
+
+<div class="argument"><h3>Z3 — Vratnost (R14) v mp-temp neexistuje</h3>
+<p>V <code>lnd-meta-core</code> není uninstall ani teardown. <code>declare-store off</code> vypne sync před jakýmkoli unlinkem — projektové artefakty zůstanou symlinky do <code>~/.lnd/stores/…</code>, které se už nesynchronizují; <code>rm -rf ~/.lnd</code> pak zničí jedinou kopii. Exclude blok se při odchodu neodstraňuje. lnd-artifacts má <code>detach</code> ↔ <code>heal</code> round-trip jako specifikovaný a testovaný požadavek. R14 přitom zní: „odstranění systému nezanechá stopy v klientském repu ani neztratí artefakty.“</p></div>
+
+<div class="argument"><h3>Z4 — Automatika vs. explicitní publish: incidenty vs. overhead</h3>
+<p>Oba zaznamenané incidenty mp-temp způsobil automatický push bez člověka v cestě: únik 94 souborů (Z2) a částečně pushnutý Azure klíč („a 235 KB diff with the hit at 37 KB pushed a partial Azure key“). mp-temp na to reaguje přidáváním brzd za automat; lnd-artifacts automat u nevratného kroku nemá — heal (bezpečný, lokální) je automatický, publish (ven) explicitní, s připomínkou na Stop hooku. Je to rozdílný výklad dvojice požadavků R0b (automatika) × R7 (explicitní souhlas) — téma T2.</p></div>
+
+<div class="argument"><h3>Z5 — Poměr složitosti a pokrytí</h3>
+<p>Transport mp-temp: 4 510 ř. bash + ~20 helperů + povinný Python, engine ve verzi 114. lnd-artifacts: 1 282 ř. POSIX sh, git + coreutils, obě runtime ověřené. Jednodušší řešení pokrývá víc požadavků dokumentu; složitost mp-temp platí za governance a sdílený pool — vlastnosti, které dokument nepožaduje.</p></div>
+
+<h2>4 · Silné stránky mp-temp k převzetí</h2>
+<ul>
+<li><strong>Secret scan před pushem</strong> (<span class="path">has_secret</span> + <span class="path">_secret_scan.py</span>) — kalený dvěma reálnými incidenty, fail-closed. Pokrývá část R6, kterou lnd-artifacts nemá.</li>
+<li><strong>Brzda hromadného mazání</strong> (≥10 delecí, 0 adicí → abort) — levná, ověřená.</li>
+<li><strong>Testovací disciplína a CI</strong> — 23 suit, 5 jobů, grill testy, poctivě přiznané limity („Green here is not green there.“).</li>
+<li><strong>Šířka doctoru</strong> — SSH reachability vs. přístup k repu, upstream tracking, stale lock; inspirace pro rozšíření <code>status</code>.</li>
+<li><strong>Parking konfliktů per soubor</strong> — přívětivější než holé „rebase se zastavil“.</li>
+<li><strong>Windows know-how</strong> (junctions, git-bash, Store-alias past) a provozní zkušenost zapsaná v komentářích.</li>
+</ul>
+
+<h2>5 · Očekávaná témata diskuse</h2>
+
+<div class="topic"><p class="t">T1 — Model oprávnění: store jako repo projektu</p>
+<ul>
+<li><strong>Cílový model:</strong> přístup vývojářů se přiděluje na úrovni projektu (GitLab skupina s více repozitáři) — artefaktový store jako další repo skupiny oprávnění přirozeně zdědí.</li>
+<li><strong>Není to prostá kopie oprávnění jednoho repa.</strong> K dořešení: kdo smí story zakládat, přístup lidí mimo projekt (harvesting, cíle 3–4), vazba na ISO úrovně.</li>
+<li><strong>Napětí R4/R5 × R15</strong> jmenuje i samotný požadavkový dokument v „Bodech k dořešení“.</li>
+<li><strong>Podpora:</strong> sdílený store mp-temp tento model nepodporuje vůbec; model 1 : 1 ano — infra proces je ale potřeba definovat (v dokumentu už zadáno). Proveditelnost v mp-temp rozebírá T6.</li>
+</ul></div>
+
+<div class="topic"><p class="t">T2 — Automatická vs. explicitní synchronizace</p>
+<ul>
+<li><strong>Jádro sporu:</strong> R0b žádá nulový overhead, R7 explicitní souhlas — dva výklady téže dvojice.</li>
+<li><strong>mp-temp:</strong> „potvrdit jednou, pak plný automat“ — cenu ukazují oba zaznamenané incidenty (Z4).</li>
+<li><strong>lnd-artifacts:</strong> „automatické vše bezpečné, explicitní jediný nevratný krok“ — cena: jeden příkaz navíc, připomínaný Stop hookem.</li>
+<li><strong>Možný kompromis:</strong> default explicitní, opt-in auto-sync per projekt s guardy (secret scan, brzda mazání).</li>
+</ul></div>
+
+<div class="topic"><p class="t">T3 — Sdílený pool vs. izolované story</p>
+<ul>
+<li><strong>Hodnota poolu</strong> („připojíš se k projektu, máš specs domény“) je ve <em>čtení</em> napříč projekty — tu lze postavit i nad izolovanými story: enumerace rep dle naming konvence, případně server-side mirror (směr, kam míří prototyp store-gateway).</li>
+<li><strong>Opačný směr nefunguje:</strong> do sdíleného poolu se izolace, per-klient ACL a vratnost zpětně dostavět nedají.</li>
+<li><strong>Ani multi-repo projekty pool nevyžadují</strong> (v Javě běžné — repo per service): jedno artefakt-repo projektu, větev per hostitelské repo + společná větev <code>common</code>, bez změny enginu — podrobně „Umístění artefaktového storu“, kap. 6.</li>
+</ul></div>
+
+<div class="topic"><p class="t">T4 — Kurátorovaný whitelist vs. adopt-anything</p>
+<ul>
+<li><strong>Motivace whitelistu je legitimní</strong> — kontra-návrh „synchronizovat jen schválené artefakty“ je i v požadavkovém dokumentu.</li>
+<li><strong>Mechanismus × politika se nevylučují:</strong> univerzální mechanismus (cesty) + kurátorovaná politika (schválený seznam spravovaný správcem — přesně R0a).</li>
+<li><strong>Rozdíl je v ceně změny:</strong> nad univerzálním mechanismem je politika levný doplněk (seznam ve skillu, review store repa); nad mechanismem zadrátovaným v enginu se politika bez zásahu do kódu změnit nedá.</li>
+</ul></div>
+
+<div class="topic"><p class="t">T5 — Provozní zralost</p>
+<ul>
+<li><strong>mp-temp:</strong> nasazený, testy podložený. <strong>lnd-artifacts:</strong> novější, v produkci neověřený.</li>
+<li><strong>Ale:</strong> většina oprav v historii mp-temp řeší důsledky vlastní architektury — sdílený store, auto-push, per-spec mirroring (např. vlastní drafted bug report na openspec CLI přeskakující symlinkované změny).</li>
+<li><strong>lnd-artifacts tyto třídy chyb odstraňuje konstrukcí;</strong> co mu chybí (CI, secret scan), je přenositelné z mp-temp.</li>
+</ul></div>
+
+<div class="topic"><p class="t">T6 — Dá se R4/R5 v mp-temp dodělat? (showstopper, nebo ne)</p>
+<p>Izolaci klientských dat zajistit jde, ale ne při zachování modelu. Per-cestu read ACL git ani GitLab neumí, takže existují jen tyto cesty:</p>
+<ul>
+<li><strong>Cesta 1 — překlopit default na per-klientské story.</strong> Mechanismus existuje (<code>declare-store</code> restricted store), technicky ~týden včetně testů. Ale zmizí sdílený pool („This shared pool IS the value“), harvest skilly mají cesty poolu zadrátované — a z transportu zbyde dražší reimplementace topologie 1 : 1. Whitelist typů (R0a/R1) a vratnost (R14) zůstávají samostatnou prací.</li>
+<li><strong>Varianta cesty 1 — story per skupina projektů se shodnými oprávněními.</strong> Literu R4 na čtecí straně splní, ale třídy shodných oprávnění nejsou stabilní v čase (týmy rotují, projekty se předávají do správy) — rozchod tříd = migrace projektu do jiného storu, neprovedená migrace = tichý drift přístupů. Kvůli R5 skupina nesmí překročit jednoho klienta, takže i tahle varianta kolabuje na „store per klientský projekt“. Pool mp-temp je navíc dělený podle area, ne podle tříd oprávnění — byla by to jeho přestavba.</li>
+<li><strong>Cesta 2 — zachovat pool a předřadit gateway</strong> (per-caller scoping, prototyp <span class="path">tools/store-gateway</span>). Jediná cesta, jak mít pool i R4 zároveň. Cena: měsíce práce + provoz služby, transport přestane být git (ztráta offline/fail-soft vlastností lokálního klonu), vznikne centrální bod s daty všech klientů a všemi tokeny. Dnes „working prototype, never deployed“.</li>
+<li><strong>Cesta 3 — šifrování per klient v jednom repu.</strong> Nefunkční: revokace klíčů zpětně nejde, šifrované bloby rozbijí diff/merge (celý parking konfliktů) i vytěžování.</li>
+</ul>
+<p><strong>Závěr:</strong> R4/R5 není nedodělek, ale designové rozhodnutí — pro roli transportu klientských artefaktů diskvalifikující, dokud požadavky platí v dnešním znění. Zmírnění (např. pool jen pro neklientský obsah) je bezpečnostní rozhodnutí vyžadující explicitní podpis (NDA/ISO), ne inženýrská volba. mp-temp sám s tím zachází jako s nevyřešeným: <span class="path">RETURN-MAP.md</span> podmiňuje návrat transportu security modelem „pending legal“, knowhow kanál má „No poznatek is pushed anywhere until this comes back“. Pro znalostní vrstvu (harvesting, governance) showstopper není — funguje i nad izolovanými story.</p></div>
+
+<h2>6 · Návrh dalšího postupu</h2>
+<ul>
+<li><strong>Transport = lnd-artifacts.</strong> Per-projektový store v git common dir, adopt/heal/sync/detach, dual-runtime. Pokrývá R1–R8 a R14 konstrukcí.</li>
+<li><strong>Guardy = z mp-temp.</strong> Secret scan před pushem a brzda hromadného mazání portovat do <code>sync</code>.</li>
+<li><strong>Kvalita = disciplína mp-temp.</strong> CI pipeline nad smoke suitou; postupné rozšíření <code>status</code> o doctor-checks včetně exclude bloku.</li>
+<li><strong>Harvesting a grafy = vrstva nad transportem.</strong> Harvest skilly a multirepo-graph čtou per-projektová repa dle naming konvence; store-gateway je vhodný tvar pro budoucí company-wide čtecí přístup (server-side, per-caller scoping).</li>
+<li><strong>Automatika = otevřené rozhodnutí</strong> (T2): default explicitní, opt-in automat s guardy jako možný kompromis.</li>
+</ul>
+<p>Kombinace pokrývá všech 17 požadavků a zachovává z obou řešení to nejsilnější: topologii a transport lnd-artifacts, guardy, testovací kulturu a znalostní vrstvu mp-temp.</p>
+
+<h2>7 · Známé mezery lnd-artifacts</h2>
+<ul>
+<li><strong>Secret scan před pushem</strong> (R6) — nejvážnější mezera; plán: převzít z mp-temp.</li>
+<li><strong>CI</strong> (R13) — e2e smoke existuje, pipeline chybí; plán: přidat.</li>
+<li><strong>Automatika synchronizace</strong> (R0b) — záměr, viz Z4/T2.</li>
+<li><strong>Windows</strong> (R11) — vědomý scope cut; know-how existuje v mp-temp i ailienu.</li>
+<li><strong>status užší než doctor</strong> (R12) — rozšiřovat postupně.</li>
+</ul>
+
+<h2>8 · Doplňující fakta</h2>
+<ul>
+<li>V mp-temp (poslední commit 30. 8. 2026) není žádná stopa po požadavkovém dokumentu (grep „hostitelsk*“, „požadav*“, číslování R1–R15: 0 zásahů) — toto je první ověření proti jeho textu.</li>
+<li><span class="path">RETURN-MAP.md</span> označuje mp-temp za „temporary pilot clone“ čekající na architektonické a bezpečnostní rozhodnutí — tedy na tuto diskusi.</li>
+<li>Doctor nekontroluje <code>.git/info/exclude</code>; <span class="path">has_secret</span> čte <code>PIPESTATUS[1]</code> místo <code>[0]</code> (selhání <code>git diff</code> projde jako čistý sken); grafy se stagují <code>git add -A</code> bez extension whitelistu.</li>
+<li>Potvrzení sdíleného storu vyžaduje reálné tty — v čistě agentním/CI prostředí se defaultní store nedá zapnout (bypass env proměnnou je zdokumentovaný).</li>
+</ul>
+
+<p class="footnote">Zdroje: DLVR-Požadavky na správu AI a projektových artefaktů (1. 9. 2026) · /Users/jank/dev/work/lunde/mp-temp @ 4279b83 · /Users/jank/dev/work/lunde/lnd-artifacts @ 743eff9 · hloubkový audit obou repozitářů, 1. 9. 2026. Hodnocení se týká výhradně vrstvy správy artefaktů (lnd-meta-core transport); governance, sales a FE pluginy mp-temp nebyly předmětem srovnání.</p>
+</main>
