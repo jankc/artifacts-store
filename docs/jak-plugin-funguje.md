@@ -6,17 +6,18 @@ Stručný popis pro kolegy a vedení. Detailní referenci má `README.md`.
 
 Při práci s AI agenty (Claude Code, Codex) vznikají v projektu soubory jako `.claude/`,
 `openspec/` nebo `CLAUDE.md`. Chceme je verzovat a sdílet v týmu, ale **nesmí se dostat do
-repozitáře zákazníka**. Ruční `.gitignore` je křehký a artefakty pak nikde nežijí.
+zákaznického repozitáře**. Ruční `.gitignore` je křehký a artefakty pak nikde nežijí.
 
 ## Řešení v jedné větě
 
-Artefakty žijí ve **vlastním privátním git repozitáři**, který je naklonovaný *dovnitř*
-adresáře `.git/` zákaznického projektu a do kořene projektu jen **nasymlinkovaný**.
+Artefakty žijí ve **vlastním privátním git repozitáři** (dále „artefaktové repo“), který je
+naklonovaný *dovnitř* adresáře `.git/` zákaznického projektu a do kořene projektu jen
+**symlinkovaný**. Tento lokální klon nazýváme **store**.
 
 ```
 customer-project/
   .git/
-    lundegaard/          <- artefaktový repozitář (běžný git clone)
+    lundegaard/          <- artefaktové repozitář (běžný git clone)
       .claude/
       openspec/
       CLAUDE.md
@@ -51,7 +52,7 @@ plugin potřebuje vědět, plyne z polohy souborů:
   symlink uklidí.
 - **Co se ignoruje.** Blok v `info/exclude` se generuje z téhož seznamu. Jeden vstup
   (obsah kořene storu), dva výstupy (symlinky, exclude), které se nemohou rozejít.
-- **Kam linky ukazují.** Vždy relativně na `.git/lundegaard/<jméno>`. Linky vypadají
+- **Kam symlinky ukazují.** Vždy relativně na `.git/lundegaard/<jméno>`. Symlinky vypadají
   v každém projektu i u každého kolegy stejně, takže se dají kdykoli smazat a znovu
   odvodit — `heal` je jen „přepočítej stav z obsahu storu“.
 
@@ -77,11 +78,11 @@ nepushují** — publikace je vždy explicitní rozhodnutí člověka.
 
 | Příkaz | Co dělá |
 | --- | --- |
-| `init <remote-url>` | Naklonuje artefaktový repo do `.git/lundegaard` a vytvoří symlinky. Jednorázově na projekt. |
+| `init <remote-url>` | Naklonuje artefaktové repo do `.git/lundegaard` a vytvoří symlinky. Jednorázově na projekt. |
 | `heal` | Idempotentní oprava: doplní chybějící symlinky, opraví špatné, odstraní osiřelé, přepíše exclude blok. |
-| `adopt <cesta>` | Přesune existující neverzovanou složku/soubor do store a nasymlinkuje zpět. |
-| `sync` | Commitne vše ve store, `pull --rebase`, push. Jediný způsob publikace. |
-| `status` | Přehled: existence store, počet necommitnutých/nepushnutých změn, zdraví symlinků. Nic nemění. |
+| `adopt <cesta>` | Přesune existující neverzovanou složku/soubor do storu a symlinkuje zpět. |
+| `sync` | Commitne vše ve storu, `pull --rebase`, push. Jediný způsob publikace. |
+| `status` | Přehled: existence storu, počet necommitnutých/nepushnutých změn, zdraví symlinků. Nic nemění. |
 | `detach` | Odstraní symlinky a exclude blok. Store zůstává; `heal` vše vrátí. |
 
 Každý měnící příkaz umí `--dry-run`.
@@ -90,10 +91,10 @@ Každý měnící příkaz umí `--dry-run`.
 
 ### 1. Jednorázové zavedení do projektu
 
-1. Založí se prázdný privátní repozitář pro artefakty (1 repo = 1 zákaznický projekt).
+1. Založí se prázdné privátní artefaktové repo (1 repo = 1 zákaznický projekt).
 2. V projektu se spustí `init git@host:team/project-artifacts.git` — buď přes agenta
    („nastav správu artefaktů“), nebo ručně z checkoutu pluginu.
-3. `init` naklonuje store, nasymlinkuje jeho obsah do kořene, zapíše exclude blok a uloží
+3. `init` naklonuje store, symlinkuje jeho obsah do kořene, zapíše exclude blok a uloží
    kopii enginu do `.git/lundegaard.engine.sh`.
 4. Pokud v projektu už např. `.claude/` existuje, `init` ho **nesmaže**, jen přejmenuje na
    `.claude.quarantined-<timestamp>` a nahlásí. Do store se pak dostane přes `adopt`.
@@ -101,7 +102,7 @@ Každý měnící příkaz umí `--dry-run`.
 ### 2. Běžná práce
 
 - Vývojář i agent pracují s `.claude/`, `openspec/`, `CLAUDE.md` normálně — přes symlinky
-  se zapisuje přímo do store.
+  se zapisuje přímo do storu.
 - Zákaznický `git status` zůstává čistý; artefakty do jeho commitů nejdou.
 - Při každém startu session hook spustí `heal`, takže po `git clean` nebo v novém worktree
   se symlinky samy obnoví.
@@ -109,7 +110,7 @@ Každý měnící příkaz umí `--dry-run`.
 ### 3. Publikace změn
 
 - Když je co sdílet, člověk (nebo agent na výslovnou žádost) spustí `sync`.
-- Na konci session hook Stop upozorní, pokud ve store zbývají nesynchronizované změny.
+- Na konci session hook Stop upozorní, pokud ve storu zbývají nesynchronizované změny.
 - Kolega si změny stáhne také přes `sync` (obsahuje `pull --rebase`).
 
 ### 4. Nový kolega / nový klon
@@ -127,21 +128,21 @@ Každý měnící příkaz umí `--dry-run`.
 ## Životní cyklus artefaktu
 
 ```
-vznik ──> adopt / vytvoření přes symlink ──> úpravy (lokálně, ve store) ──> sync (commit + push)
+vznik ──> adopt / vytvoření přes symlink ──> úpravy (lokálně, ve storu) ──> sync (commit + push)
                                                    ^                             |
                                                    └── heal obnoví symlink  <────┘
                                                        po clean / novém worktree
 ```
 
-1. **Vznik** — soubor vytvořený přes symlink vzniká rovnou ve store; existující soubor se
+1. **Vznik** — soubor vytvořený přes symlink vzniká rovnou ve storu; existující soubor se
    přesune příkazem `adopt`.
 2. **Úpravy** — necommitnutý stav žije jen lokálně v `.git/lundegaard`. `status` a hook Stop
    ho hlásí.
 3. **Publikace** — `sync` commitne a pushne do artefaktového remote. Konflikty se řeší při
    rebase, stejně jako u běžného gitu.
 4. **Obnova** — symlinky jsou jednorázové a obnovitelné; `heal` je kdykoli dopočítá z obsahu
-   store.
-5. **Zánik** — smazání souboru ve store + `sync`; `heal` pak odstraní osiřelý symlink.
+   storu.
+5. **Zánik** — smazání souboru ve storu + `sync`; `heal` pak odstraní osiřelý symlink.
 
 ## Codex
 
@@ -162,7 +163,7 @@ např. `~/.lnd/artifacts/<projekt>/`, a do projektu by se jen symlinkoval.
 
 ```
 ~/.lnd/artifacts/
-  acme-shop/           <- artefaktový repo pro projekt acme-shop
+  acme-shop/           <- artefaktové repo pro projekt acme-shop
   bank-portal/
   ...
 customer-project/
@@ -174,7 +175,7 @@ customer-project/
 | --- | --- | --- |
 | Přežije `rm -rf .git` / nový klon | ne (nepushnuté změny se ztratí) | ano |
 | Obsah v archivu/image buildu checkoutu | ano, pokud se balí `.git` | ne |
-| Sdílení jednoho artefaktového repa mezi více repy | ano, klon per repo, propagace přes remote při `sync` | ano, jeden klon, změny vidí všechna repa okamžitě |
+| Sdílení jednoho artefaktového repa mezi více zákaznickými repozitáři | ano, klon per repo, propagace přes remote při `sync` | ano, jeden klon, změny vidí všechny repozitáře okamžitě |
 | Worktrees | zdarma, bez konfigurace | nutné mapování worktree → store |
 | Mapování projekt → store | žádné (dáno polohou) | nutný konfigurační/stavový soubor |
 | Ochrana před únikem do zákaznického remote | strukturální | jen přes `info/exclude` |
@@ -214,14 +215,14 @@ ale všechny story mají žít v **jednom artefaktovém repu** projektu, spolu s
 artefakty (PRD, doménový slovník, architektonická rozhodnutí).
 
 Preferované řešení jsou **podadresáře**: artefaktové repo má na první úrovni `common/` a
-jeden adresář per hostitelský repozitář. Engine linkuje obsah `<klon>/<název-repa>/` a
+jeden adresář per zákaznický repozitář. Engine linkuje obsah `<klon>/<název-repa>/` a
 `<klon>/common/` místo kořene klonu; název podstoru se odvodí z názvu repa, s možností
 přepsat ho při `init`. Pravidlo „první úroveň = manifest“ i `sync` zůstávají beze změny,
 ploché artefaktové repo funguje jako dosud.
 
 ```
 acme-artifacts/
-  common/            <- sdílené artefakty, linkované do každého repa
+  common/            <- sdílené artefakty, linkované do každého repozitáře
   order-service/     <- store repa order-service
   payment-service/
   gateway/
@@ -254,7 +255,7 @@ vlastní kategorie.
 
 - **`status` napříč projekty** — jeden příkaz vypíše nesynchronizované story všech
   projektů (přirozené s centrálním úložištěm).
-- **Šablony storu** — `init` naplní nový artefaktový repo výchozí strukturou
+- **Šablony storu** — `init` naplní nový artefaktové repo výchozí strukturou
   (`.claude/`, `openspec/`, kostra `CLAUDE.md`).
 - **Podpora dalších agentů** — skill je runtime-neutrální; přidání dalšího nástroje znamená
   hlavně zjistit, jak načítá skilly, engine se nemění.
