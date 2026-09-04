@@ -178,15 +178,17 @@ customer-project/
 | Worktrees | zdarma, bez konfigurace | nutné mapování worktree → store |
 | Mapování projekt → store | žádné (dáno polohou) | nutný konfigurační/stavový soubor |
 | Ochrana před únikem do zákaznického remote | strukturální | jen přes `info/exclude` |
-| Úklid po smazaném projektu | automatický | ruční / vlastní verb |
+| Úklid po smazaném projektu | automatický | ruční / vlastní příkaz |
 
 Shrnutí: centrální úložiště je **nutné** jen tam, kde store nemá žádné `.git`, do kterého by
 patřil (efemérní CI checkouty, artefakty k něčemu, co není git repo), nebo když má více
 repozitářů sdílet **jeden klon** s okamžitou lokální propagací bez `sync`. Multi-repo projekt
 s jedním artefaktovým repem ho nevyžaduje (viz níže). Dává smysl také tehdy, když je prioritou
 přežití nepushnutých změn nezávisle na checkoutu. Platí se za to mapovacím stavem a
-úklidem. Engine je na změnu připraven jen částečně: verby by zůstaly stejné, změnil by se
-jen výpočet cesty ke storu. Podrobný rozbor: `docs/analysis/2026-09-01-store-placement.md`.
+úklidem. Příkazy enginu i linkování by zůstaly beze změny, cesta ke storu se odvozuje na
+jednom místě. Nově by ale bylo třeba vyřešit mapování projekt → store funkční i z worktrees,
+umístění locku a vendorovaného enginu (dnes leží vedle storu v `.git/`), napojení na už
+existující store při `init` a úklid po smazaném projektu. Podrobný rozbor: `docs/analysis/2026-09-01-store-placement.md`.
 
 ### Rozšíření: automatizace, aby uživatel nemusel téměř nic dělat
 
@@ -244,7 +246,7 @@ vlastní kategorie.
 - **Vynucení:** `adopt` odmítne jméno mimo seznam, `sync` odmítne commitnout store
   s nepovolenou položkou (bez `--force`), `status` a hook Stop varují, `heal` položku dál
   linkuje, jen ji nahlásí.
-- **Druhá linie na serveru:** CI v artefaktovém repu zavolá read-only verb enginu a ověří
+- **Druhá linie na serveru:** CI v artefaktovém repu zavolá read-only příkaz enginu a ověří
   první úroveň proti témuž seznamu, aby ruční `git push` kontrolu neobešel.
 - **Bez per-projektových výjimek.** Jakmile by existovaly, kurátorování ztrácí smysl.
 
