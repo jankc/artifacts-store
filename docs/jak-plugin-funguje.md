@@ -174,14 +174,16 @@ customer-project/
 | --- | --- | --- |
 | Přežije `rm -rf .git` / nový klon | ne (nepushnuté změny se ztratí) | ano |
 | Obsah v archivu/image buildu checkoutu | ano, pokud se balí `.git` | ne |
-| Sdílení jednoho storu mezi více repy | ne (1 store = 1 repo) | ano — jediné umístění, které to umožňuje |
+| Sdílení jednoho artefaktového repa mezi více repy | ano, klon per repo, propagace přes remote při `sync` | ano, jeden klon, změny vidí všechna repa okamžitě |
 | Worktrees | zdarma, bez konfigurace | nutné mapování worktree → store |
 | Mapování projekt → store | žádné (dáno polohou) | nutný konfigurační/stavový soubor |
 | Ochrana před únikem do zákaznického remote | strukturální | jen přes `info/exclude` |
 | Úklid po smazaném projektu | automatický | ruční / vlastní verb |
 
-Shrnutí: centrální úložiště je **nutné**, pokud má být jeden store sdílený více repozitáři
-(multi-repo projekt s jedním artefaktovým repem, efemérní CI checkouty) nebo je prioritou
+Shrnutí: centrální úložiště je **nutné** jen tam, kde store nemá žádné `.git`, do kterého by
+patřil (efemérní CI checkouty, artefakty k něčemu, co není git repo), nebo když má více
+repozitářů sdílet **jeden klon** s okamžitou lokální propagací bez `sync`. Multi-repo projekt
+s jedním artefaktovým repem ho nevyžaduje (viz níže). Dává smysl také tehdy, když je prioritou
 přežití nepushnutých změn nezávisle na checkoutu. Platí se za to mapovacím stavem a
 úklidem. Engine je na změnu připraven jen částečně: verby by zůstaly stejné, změnil by se
 jen výpočet cesty ke storu. Podrobný rozbor: `docs/analysis/2026-09-01-store-placement.md`.
