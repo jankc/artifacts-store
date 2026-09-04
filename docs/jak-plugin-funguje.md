@@ -1,6 +1,6 @@
 # lnd-artifacts — jak plugin funguje
 
-Stručný popis pro kolegy a vedení. Detailní referenci má `README.md`.
+Stručný popis pro kolegy a vedení. Detailní referenci má README v repozitáři pluginu.
 
 ## Problém
 
@@ -64,7 +64,7 @@ artefaktového repa při `init`.
 
 | Část | Role |
 | --- | --- |
-| `scripts/lnd-artifacts.sh` | „engine“ — POSIX shell skript se všemi příkazy (viz níže) |
+| engine (`lnd-artifacts.sh`) | jediný POSIX shell skript se všemi příkazy (viz níže) |
 | skill `lnd-artifacts` | návod pro agenta, jak engine volat (Claude Code i Codex) |
 | příkaz `/lnd-artifacts:help` | jen čtení: stav artefaktů + seznam příkazů (pouze Claude Code) |
 | hook SessionStart | při startu session spustí `heal` (opraví symlinky) |
@@ -117,7 +117,7 @@ Každý měnící příkaz umí `--dry-run`.
 
 - Naklonuje zákaznický projekt a spustí `init` se stejnou URL artefaktového repa.
 - Pro nové worktrees stačí `heal`; lze jej automatizovat jednou řádkou v worktree tooling
-  nebo v git `post-checkout` hooku (viz README).
+  nebo v git `post-checkout` hooku (postup je v README pluginu).
 
 ### 5. Ukončení
 
@@ -189,7 +189,7 @@ přežití nepushnutých změn nezávisle na checkoutu. Platí se za to mapovac�
 úklidem. Příkazy enginu i linkování by zůstaly beze změny, cesta ke storu se odvozuje na
 jednom místě. Nově by ale bylo třeba vyřešit mapování projekt → store funkční i z worktrees,
 umístění locku a vendorovaného enginu (dnes leží vedle storu v `.git/`), napojení na už
-existující store při `init` a úklid po smazaném projektu. Podrobný rozbor: `docs/analysis/2026-09-01-store-placement.md`.
+existující store při `init` a úklid po smazaném projektu. Podrobný rozbor je v analýze „Umístění artefaktového storu“ (1. 9. 2026).
 
 ### Rozšíření: automatizace, aby uživatel nemusel téměř nic dělat
 
@@ -228,7 +228,7 @@ acme-artifacts/
   gateway/
 ```
 
-Varianta s větví per repozitář (viz `docs/CONTEXT.md` §6) je zamítnuta kvůli nutnosti
+Varianta s větví per repozitář (dřívější analýza z 31. 8. 2026) je zamítnuta kvůli nutnosti
 mergovat každou změnu sdílených artefaktů do N větví. Další alternativy (sparse-checkout,
 submoduly, manifest) byly zváženy a nepřinášejí nic navíc oproti podadresářům.
 
