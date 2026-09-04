@@ -17,7 +17,7 @@ naklonovaný *dovnitř* adresáře `.git/` zákaznického projektu a do kořene 
 ```
 customer-project/
   .git/
-    lundegaard/          <- artefaktové repozitář (běžný git clone)
+    lundegaard/          <- artefaktové repo (běžný git clone)
       .claude/
       openspec/
       CLAUDE.md
