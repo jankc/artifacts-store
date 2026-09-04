@@ -97,7 +97,7 @@ Každý měnící příkaz umí `--dry-run`.
 3. `init` naklonuje store, symlinkuje jeho obsah do kořene, zapíše exclude blok a uloží
    kopii enginu do `.git/lundegaard.engine.sh`.
 4. Pokud v projektu už např. `.claude/` existuje, `init` ho **nesmaže**, jen přejmenuje na
-   `.claude.quarantined-<timestamp>` a nahlásí. Do store se pak dostane přes `adopt`.
+   `.claude.quarantined-<timestamp>` a nahlásí. Do storu se pak dostane přes `adopt`.
 
 ### 2. Běžná práce
 
@@ -255,7 +255,7 @@ vlastní kategorie.
 
 - **`status` napříč projekty** — jeden příkaz vypíše nesynchronizované story všech
   projektů (přirozené s centrálním úložištěm).
-- **Šablony storu** — `init` naplní nový artefaktové repo výchozí strukturou
+- **Šablony storu** — `init` naplní nové artefaktové repo výchozí strukturou
   (`.claude/`, `openspec/`, kostra `CLAUDE.md`).
 - **Podpora dalších agentů** — skill je runtime-neutrální; přidání dalšího nástroje znamená
   hlavně zjistit, jak načítá skilly, engine se nemění.
