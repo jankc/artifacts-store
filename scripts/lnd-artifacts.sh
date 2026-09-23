@@ -19,7 +19,7 @@
 set -eu
 
 PROG=lnd-artifacts
-VERSION=0.1.0
+VERSION=0.1.1
 
 # Absolute path of the running script, captured before anything can change the
 # working directory: it is the source of the vendored copy (B1/B2).
@@ -599,6 +599,23 @@ do_heal() {
             unlink_managed "$dh_old"
         done
     fi
+
+    # The block is shared by every worktree, so once one heal has dropped a
+    # removed entry from it, the other worktrees' links are no longer listed.
+    # Also drop any root symlink that points at exactly $STORE/<its own name>
+    # when that entry is gone.
+    for dh_p in "$WT_ROOT"/* "$WT_ROOT"/.[!.]* "$WT_ROOT"/..?*; do
+        if [ ! -L "$dh_p" ]; then continue; fi
+        dh_n=${dh_p##*/}
+        if printf '%s\n' "$dh_entries" | grep -Fqx -- "$dh_n"; then continue; fi
+        dh_t=$(readlink "$dh_p")
+        case $dh_t in
+            /*) ;;
+            *) dh_t="$WT_ROOT/$dh_t" ;;
+        esac
+        if [ "$(lexnorm "$dh_t")" != "$STORE/$dh_n" ]; then continue; fi
+        unlink_managed "$dh_n"
+    done
 
     if [ -n "$dh_entries" ]; then
         dh_oifs=$IFS

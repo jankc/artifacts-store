@@ -611,6 +611,20 @@ step "edits made in the worktree are the same files"
 printf 'from-worktree\n' >"$WT/.claude/settings.json"
 eq "main worktree sees the edit" "from-worktree" "$(cat "$HOST/.claude/settings.json")"
 
+step "a removed store entry is unlinked in every worktree"
+printf 'probe\n' >"$STORE/probe.md"
+(cd "$HOST" && engine heal >/dev/null)
+(cd "$WT" && engine heal >/dev/null)
+check "worktree link probe.md" is_link_to "$WT/probe.md" "$STORE/probe.md"
+ln -s ../elsewhere/probe-foreign.md "$WT/probe-foreign.md"
+rm "$STORE/probe.md"
+(cd "$HOST" && engine heal >/dev/null) # rewrites the shared block first
+(cd "$WT" && engine heal >/dev/null)
+check_not "main worktree link probe.md removed" test -L "$HOST/probe.md"
+check_not "worktree link probe.md removed after the block was rewritten" test -L "$WT/probe.md"
+check "foreign symlink outside the store left alone" test -L "$WT/probe-foreign.md"
+rm "$WT/probe-foreign.md"
+
 # --- agentless bootstrap (artifact-bootstrap) ------------------------------
 
 step "the vendored engine bootstraps a worktree after the plugin disappears"
