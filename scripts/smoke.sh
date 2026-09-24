@@ -422,7 +422,7 @@ esac
 SYNC_HEAD_BEFORE=$(git -C "$STORE" rev-parse HEAD)
 SYNC_DRY=$(engine sync --dry-run)
 case $SYNC_DRY in
-    *"pull --rebase from origin/main"*"push if commits remain ahead"*)
+    *"fetch origin"*"rebase onto origin/main"*"push if commits remain ahead"*)
         ok "dry-run sync includes remote integration"
         ;;
     *) bad "dry-run sync should include remote integration (got: $SYNC_DRY)" ;;
@@ -457,7 +457,7 @@ BACKUP_SYNC=$(engine sync)
 eq "configured backup branch receives the artifact" "backup-only" "$(git -C "$BACKUP_REMOTE" show published:.claude/backup-only.txt)"
 check_not "origin is not selected over the configured backup" git -C "$REMOTE" cat-file -e main:.claude/backup-only.txt
 case $BACKUP_SYNC in
-    *"pull --rebase from backup/published"*"pushed"*"backup/published"*) ok "sync honors the configured backup upstream branch" ;;
+    *"fetch backup"*"rebase onto backup/published"*"pushed"*"backup/published"*) ok "sync honors the configured backup upstream branch" ;;
     *) bad "sync should use the configured backup upstream (got: $BACKUP_SYNC)" ;;
 esac
 git -C "$STORE" push -q origin main
@@ -811,6 +811,150 @@ check_not "README.md link removed once the store entry is gone" test -L "$HOST/R
 check "the host's own README.md is untouched" test -f "$HOST/README.md"
 eq "host README.md content intact" "readme" "$(cat "$HOST/README.md")"
 host_clean "$HOST" "after removing a store entry"
+
+# --- local-only entries (add-local-only-artifacts) ---------------------------
+
+STORE_EXCL="$STORE/.git/info/exclude"
+drop_store_excl() { # drop_store_excl <line>
+    grep -Fvx "$1" "$STORE_EXCL" >"$WORK/store-exclude.tmp" || true
+    cat "$WORK/store-exclude.tmp" >"$STORE_EXCL"
+}
+
+step "adopt --local keeps an entry out of the store's history"
+mkdir -p "$HOST/.private"
+printf 'mine\n' >"$HOST/.private/notes.md"
+LOCAL_DRY=$(engine adopt .private --local --dry-run)
+case $LOCAL_DRY in
+    *"add /.private to $STORE_EXCL (local-only)"*) ok "dry-run adopt --local plans the store exclude line" ;;
+    *) bad "dry-run adopt --local should plan the store exclude line (got: $LOCAL_DRY)" ;;
+esac
+check_not "dry-run adopt --local did not populate the store" test -e "$STORE/.private"
+check_not "dry-run adopt --local wrote no store exclude line" grep -Fqx "/.private" "$STORE_EXCL"
+engine adopt .private --local >/dev/null
+check "local-only entry is linked back" is_link_to "$HOST/.private" "$STORE/.private"
+check "local-only entry is in the host exclude block" grep -Fqx "/.private" "$HOST/.git/info/exclude"
+check "local-only entry is in the store's info/exclude" grep -Fqx "/.private" "$STORE_EXCL"
+eq "store git does not see the local-only entry" "" "$(git -C "$STORE" status --porcelain --untracked-files=all -- .private)"
+host_clean "$HOST" "after adopt --local"
+check_not "--local is refused outside adopt" engine status --local
+
+step "local-only edits never sync; shared edits beside them do"
+printf 'shared\n' >"$HOST/openspec/shared.md"
+engine sync >/dev/null
+eq "remote has the shared edit" "shared" "$(git -C "$REMOTE" show main:openspec/shared.md)"
+eq "remote has nothing under .private" "" "$(git -C "$REMOTE" ls-tree main -- .private)"
+printf 'mine-2\n' >>"$HOST/.private/notes.md"
+case "$(engine sync)" in
+    *"already in sync"*) ok "a local-only edit alone leaves nothing to sync" ;;
+    *) bad "a local-only edit alone should leave nothing to sync" ;;
+esac
+git -C "$SEED" pull -q --rebase
+printf 'unrelated\n' >"$SEED/openspec/unrelated.md"
+git -C "$SEED" add -A
+git -C "$SEED" commit -qm "unrelated remote change"
+git -C "$SEED" push -q
+engine sync >/dev/null
+eq "unrelated remote changes integrate beside a local-only entry" "unrelated" "$(cat "$STORE/openspec/unrelated.md")"
+
+step "local-only entries reach every worktree and show in status"
+(cd "$WT" && engine heal >/dev/null)
+check "worktree link .private" is_link_to "$WT/.private" "$STORE/.private"
+host_clean "$WT" "worktree after heal with a local-only entry"
+case "$(engine status)" in
+    *"local    : .private — never pushed"*) ok "status lists the local-only entry" ;;
+    *) bad "status should list .private as local-only" ;;
+esac
+
+step "names with gitignore metacharacters stay local and invisible"
+mkdir -p "$HOST/[draft]"
+printf 'd\n' >"$HOST/[draft]/f"
+engine adopt '[draft]' --local >/dev/null
+check "store exclude line is escaped" grep -Fqx '/\[draft\]' "$STORE_EXCL"
+eq "store git does not see [draft]" "" "$(git -C "$STORE" status --porcelain --untracked-files=all)"
+host_clean "$HOST" "after adopting [draft]"
+case "$(engine status)" in
+    *"local    : .private [draft] — never pushed"*) ok "status lists [draft] as local-only" ;;
+    *) bad "status should list [draft] as local-only" ;;
+esac
+git -C "$SEED" pull -q --rebase
+mkdir -p "$SEED/[draft]"
+printf 'theirs\n' >"$SEED/[draft]/f"
+git -C "$SEED" add -A
+git -C "$SEED" commit -qm "a teammate shares [draft]"
+git -C "$SEED" push -q
+DRAFT_RC=0
+DRAFT_OUT=$(engine sync 2>&1) || DRAFT_RC=$?
+check "sync stops on a pushed [draft]/f" test "$DRAFT_RC" -ne 0
+case $DRAFT_OUT in
+    *"[draft]/f"*) ok "the guard names [draft]/f literally" ;;
+    *) bad "the guard should name [draft]/f (got: $DRAFT_OUT)" ;;
+esac
+eq "local [draft]/f untouched" "d" "$(cat "$HOST/[draft]/f")"
+git -C "$SEED" rm -rq '[draft]'
+git -C "$SEED" commit -qm "drop [draft]"
+git -C "$SEED" push -q
+rm -rf "$STORE/[draft]"
+drop_store_excl '/\[draft\]'
+engine heal >/dev/null
+check_not "[draft] link removed after its store entry went" test -L "$HOST/[draft]"
+
+step "adopt --local refuses a name already shared on the remote"
+git -C "$SEED" pull -q --rebase
+mkdir -p "$SEED/.teamdir"
+printf 'team\n' >"$SEED/.teamdir/x.md"
+git -C "$SEED" add -A
+git -C "$SEED" commit -qm "team dir"
+git -C "$SEED" push -q
+git -C "$STORE" fetch -q origin
+mkdir -p "$HOST/.teamdir"
+printf 'mine\n' >"$HOST/.teamdir/x.md"
+check_not "shared name refused" engine adopt .teamdir --local
+check "refused entry left in place" test -d "$HOST/.teamdir/"
+check_not "refused entry not moved into the store" test -e "$STORE/.teamdir"
+rm -rf "$HOST/.teamdir"
+git -C "$SEED" rm -rq .teamdir
+git -C "$SEED" commit -qm "drop team dir"
+git -C "$SEED" push -q
+
+step "sync stops before the remote overwrites local-only content"
+mkdir -p "$SEED/.private"
+printf 'theirs\n' >"$SEED/.private/notes.md"
+git -C "$SEED" add -A
+git -C "$SEED" commit -qm "a teammate shares .private"
+git -C "$SEED" push -q
+LOCAL_BEFORE=$(cat "$HOST/.private/notes.md")
+REMOTE_HEAD=$(git -C "$REMOTE" rev-parse main)
+printf 'shared-2\n' >"$HOST/openspec/shared.md"
+GUARD_RC=0
+GUARD_OUT=$(engine sync 2>&1) || GUARD_RC=$?
+check "guarded sync exits non-zero" test "$GUARD_RC" -ne 0
+case $GUARD_OUT in
+    *"local-only"*".private/notes.md"*) ok "guarded sync names the local-only path" ;;
+    *) bad "guarded sync should name .private/notes.md (got: $GUARD_OUT)" ;;
+esac
+eq "local-only file untouched" "$LOCAL_BEFORE" "$(cat "$HOST/.private/notes.md")"
+eq "nothing pushed" "$REMOTE_HEAD" "$(git -C "$REMOTE" rev-parse main)"
+eq "the run's local commit stays, unpushed" "1" "$(git -C "$STORE" rev-list --count '@{u}..HEAD')"
+check_not "no rebase left behind" test -d "$STORE/.git/rebase-merge"
+check_not "lock released" test -d "$HOST/.git/lundegaard.lock"
+host_clean "$HOST" "after a guarded sync"
+
+step "dropping the local-only content lets sync through"
+rm -rf "$STORE/.private"
+drop_store_excl "/.private"
+engine sync >/dev/null
+eq "the teammate's file arrived" "theirs" "$(cat "$STORE/.private/notes.md")"
+eq "remote has the held-back commit" "shared-2" "$(git -C "$REMOTE" show main:openspec/shared.md)"
+git -C "$SEED" pull -q --rebase
+git -C "$SEED" rm -rq .private
+git -C "$SEED" commit -qm "drop .private"
+git -C "$SEED" push -q
+engine sync >/dev/null
+engine heal >/dev/null
+(cd "$WT" && engine heal >/dev/null)
+check_not "fixture restored: no .private link" test -L "$HOST/.private"
+check_not "fixture restored: no worktree .private link" test -L "$WT/.private"
+host_clean "$HOST" "after restoring the local-only fixture"
 
 # --- detach / heal round-trip ------------------------------------------------
 

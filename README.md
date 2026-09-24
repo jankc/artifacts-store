@@ -61,11 +61,29 @@ runnable copy of the engine, so outside a session `$ENGINE` is simply
 | `init <remote-url>` | Clone the artifact repo into `<git-common-dir>/lundegaard`, then link. Refuses if a store already exists. |
 | `heal` | Idempotent self-repair: create missing links, fix wrong ones, drop orphans, rewrite the exclude block. |
 | `adopt <path>` | Move an untracked first-level path into the store and link it back. |
-| `sync` | Commit everything in the store, `pull --rebase`, push. Explicit, never automatic. |
+| `adopt --local <path>` | Same, but the entry stays out of the store's history: shared by this clone's worktrees, never pushed. |
+| `sync` | Commit everything in the store, rebase on the remote, push. Explicit, never automatic. |
 | `status` | Store presence, dirty/unpushed counts, link health, quarantine leftovers. Never changes anything. |
 | `detach` | Remove the managed links and the exclude block. The store is left untouched — `heal` restores everything. |
 
 Every mutating verb accepts `--dry-run` and prints the full plan without touching disk.
+
+### Local-only artifacts
+
+Some artifacts should reach every worktree but never the team — typically a personal
+`.claude/` in a project whose team shares only `openspec/`. `adopt --local .claude` moves
+it into the store like `adopt` does and adds `/.claude` to the store's own
+`.git/lundegaard/.git/info/exclude`, a per-clone ignore file git never commits. The entry
+is linked, healed and detached like any other; `sync` simply never stages it, and
+`status` lists it under `local`.
+
+- **No backup.** Local-only content exists only in this clone's `.git/`. `rm -rf .git`,
+  a fresh clone or a store re-`init` loses it.
+- **Sharing it later**: delete its line from the store's `info/exclude`; the next `sync`
+  commits it.
+- **If a teammate pushes the same path**, `sync` stops before integrating instead of
+  letting git overwrite your ignored files, and names the paths. Move your copy out of the
+  way or share it, then sync again.
 
 ## Invoking the engine outside a session
 
@@ -223,6 +241,8 @@ Three things compensate, in order of strength:
 
 - **`rm -rf .git` or a fresh re-clone destroys unpushed artifacts.** The store lives in
   `.git/`. Sync eagerly; the Stop hook and `status` make unsynced state loud.
+- **Local-only artifacts (`adopt --local`) have no remote copy at all** — the remote is
+  not their backup, so nothing is.
 - **Backup tools that skip `.git/` will not back up the store.** The artifact remote is
   the backup.
 - **Search tools don't follow symlinks by default** — `rg -L` if you want the artifacts

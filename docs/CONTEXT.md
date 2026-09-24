@@ -106,6 +106,27 @@ Design.md D1–D8 are the settled decisions. Extra rationale worth preserving:
   clone; linked worktrees get longer `../..`-style paths since their roots live
   elsewhere on disk. Validation always compares RESOLVED targets, not link text.
 - **No Windows support initially**: ailien's junction/hardlink dance is out of scope.
+- **Local-only entries = the store's own `info/exclude`** (`add-local-only-artifacts`,
+  2026-09-24; L1 in its design.md). For "in every worktree, never pushed" (a personal
+  `.claude/`), the store clone's per-clone ignore file is the marker: `store_entries()` is
+  a filesystem listing, so heal links ignored entries anyway, and `sync`'s `add -A` skips
+  them. Rejected: a separate unversioned `.git/lundegaard.local/` (two listings feeding
+  heal — collisions, duplicated repair logic, the two-sources-of-truth drift §6 rejects
+  for manifests), a store-root `.gitignore` (payload-only, and it would be pushed), and a
+  manifest file. Accepted cost: local-only content has no remote copy at all.
+- **Git overwrites ignored files when integrating remote commits** (verified git 2.54.0,
+  2026-09-24): clone B ignores `/.claude/` and has `.claude/s`; clone A pushes its own
+  `.claude/s`; `git pull --rebase` in B exits 0 and B's file now holds A's content. Git
+  treats ignored files as expendable. This is why `sync` runs a guard — fetch, list the
+  incoming paths, compare them with `git ls-files --others --ignored --exclude-standard
+  --directory`, stop on any hit — and why it switched
+  from `pull --rebase` to `fetch` + `rebase`: the guard must check the very ref that gets
+  integrated.
+- **`git check-ignore --stdin` globs its input** (verified 2026-09-24): a literal
+  `[draft]` is never reported, and `--literal-pathspecs`/`--noglob-pathspecs` make it die.
+  Don't use it as an ignore oracle for arbitrary names. Likewise every gitignore line the
+  engine writes goes through `ignore_pattern` (escapes `[ ] \ * ? # !` and a trailing
+  space); an unescaped `/[draft]` silently fails to ignore the entry.
 
 ## 5. Verified runtime facts
 
@@ -257,7 +278,7 @@ current design already covers this — the notes below exist so the analysis is 
 redone from scratch.
 
 - **Sharing works today, no code change.** `init` is a plain `git clone <url>` into each
-  host's own `.git/lundegaard`, and `sync` is `pull --rebase` + push against the store's
+  host's own `.git/lundegaard`, and `sync` is fetch + rebase + push against the store's
   checked-out branch. Nothing assumes a remote is used by exactly one host repo, so
   running `init <same-url>` in every repo of the project shares one artifact repo across
   all of them. The 1 repo = 1 customer rule (§4) is untouched: the transport boundary is

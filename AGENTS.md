@@ -8,7 +8,7 @@ first-level entries symlinked into the project root and ignored via a managed bl
 
 ## Current state
 
-- **No active changes.** All four are implemented, verified and archived under
+- **No active changes.** All five are implemented, verified and archived under
   `openspec/changes/archive/`; the merged behaviour lives in `openspec/specs/`
   (artifact-store, artifact-linking, artifact-sync, artifact-bootstrap,
   codex-runtime, plugin-integration). Read those specs first — they are the current
@@ -22,6 +22,9 @@ first-level entries symlinked into the project root and ignored via a managed bl
   4. `add-help-command` — the read-only `/lnd-artifacts:help` command (H1–H5), plus
      the step-1 engine-resolution fix: `CLAUDE_PLUGIN_ROOT` is never in the agent's
      shell, only substituted into skill/command text at render time.
+  5. `add-local-only-artifacts` — `adopt --local` via the store's own `info/exclude`,
+     the sync overwrite guard, status `local` line (L1–L5), plus escaped gitignore
+     lines in both exclude files.
 - Those decisions are settled — don't relitigate them.
 - For any change, read `proposal.md` → `design.md` → `specs/*/spec.md` → `tasks.md`,
   in that order.

@@ -19,7 +19,7 @@
 set -eu
 
 PROG=lnd-artifacts
-VERSION=0.1.1
+VERSION=0.2.0
 
 # Absolute path of the running script, captured before anything can change the
 # working directory: it is the source of the vendored copy (B1/B2).
@@ -34,6 +34,7 @@ esac
 DRY_RUN=0
 QUIET=0
 ALL_WORKTREES=0
+LOCAL=0
 CHANGED=0
 
 COMMON_DIR=""
@@ -84,8 +85,8 @@ verbs:
                       and link its first-level entries into this worktree
   heal                idempotent self-repair of links and the exclude block
   adopt <path>        move an untracked first-level path into the store and
-                      link it back
-  sync                commit everything in the store, pull --rebase, push
+                      link it back (--local: never commit or push it)
+  sync                commit everything in the store, rebase on the remote, push
   status              report store, sync and link health (never mutates)
   detach              remove managed links and the exclude block; keep the store
 
@@ -94,6 +95,8 @@ options:
   --quiet             suppress output when nothing changed (heal)
   -m, --message MSG   commit message for sync
   --all-worktrees     detach: also unlink every other worktree of this clone
+  --local             adopt: keep the entry out of the store's history — shared
+                      by this clone's worktrees, never pushed, never backed up
   -h, --help          this text
   -V, --version       print version
 EOF
@@ -299,6 +302,13 @@ has_block() {
     [ -f "$EXCLUDE_FILE" ] && grep -Fqx "$EXCL_BEGIN" "$EXCLUDE_FILE" 2>/dev/null
 }
 
+# ignore_pattern <name> — an anchored gitignore line matching exactly <name>.
+# Escapes the glob metacharacters (an unescaped `/[draft]` misses `[draft]`),
+# a leading-style `#`/`!`, and a trailing space, which git would trim.
+ignore_pattern() {
+    printf '/%s\n' "$1" | sed -e 's/[][\\*?#!]/\\&/g' -e 's/ $/\\ /'
+}
+
 # read_managed — names currently listed inside the managed block.
 read_managed() {
     if [ ! -f "$EXCLUDE_FILE" ]; then return 0; fi
@@ -316,13 +326,9 @@ read_managed() {
             case $rd_line in
                 '' | '#'*) continue ;;
             esac
-            rd_line=${rd_line#/}
-            case $rd_line in
-                '\'*) rd_line=${rd_line#\\} ;;
-            esac
-            printf '%s\n' "$rd_line"
+            printf '%s\n' "${rd_line#/}"
         fi
-    done <"$EXCLUDE_FILE"
+    done <"$EXCLUDE_FILE" | sed 's/\\\(.\)/\1/g' # undo ignore_pattern's escapes
 }
 
 # emit_block <newline-separated-names>
@@ -330,10 +336,7 @@ emit_block() {
     printf '%s\n%s\n' "$EXCL_BEGIN" "$EXCL_NOTE"
     printf '%s\n' "$1" | while IFS= read -r eb_n; do
         if [ -z "$eb_n" ]; then continue; fi
-        case $eb_n in
-            '#'* | '!'*) printf '/\\%s\n' "$eb_n" ;;
-            *) printf '/%s\n' "$eb_n" ;;
-        esac
+        ignore_pattern "$eb_n"
     done
     printf '%s\n' "$EXCL_END"
 }
@@ -741,12 +744,27 @@ cmd_adopt() {
     if [ -n "$(git -C "$WT_ROOT" ls-files -- "$ca_name" 2>/dev/null)" ]; then
         die "'$ca_name' is tracked by the host repository — tracked content belongs to the customer repo and adopting it would require a deletion commit there"
     fi
+    if [ "$LOCAL" -eq 1 ]; then
+        # The store's own per-clone ignore file: never committed, and shared by
+        # every worktree because the store lives in the common dir (L1).
+        ca_excl="$(store_git rev-parse --absolute-git-dir)/info/exclude"
+        case $ca_name in
+            *'
+'*) die "'$ca_name' contains a newline, which an ignore pattern cannot express" ;;
+        esac
+        ca_pat=$(ignore_pattern "$ca_name")
+        ca_ref=$(store_compare_ref)
+        if [ -n "$ca_ref" ] && [ -n "$(store_git --literal-pathspecs ls-tree --name-only "$ca_ref" -- "$ca_name" 2>/dev/null)" ]; then
+            die "'$ca_name' is already shared on $ca_ref — making it local-only would delete it for every other clone; adopt it under another name or without --local"
+        fi
+    fi
 
     say "$PROG: adopting $ca_name"
     if dry; then
         report "move $ca_path -> $STORE/$ca_name"
         report "link $ca_name -> $(relpath "$STORE/$ca_name" "$WT_ROOT")"
         report "add /$ca_name to the managed block in $EXCLUDE_FILE"
+        if [ "$LOCAL" -eq 1 ]; then report "add $ca_pat to $ca_excl (local-only)"; fi
         release_lock
         say "$PROG: $CHANGED change(s) planned (dry run, nothing written)"
         return 0
@@ -756,6 +774,16 @@ cmd_adopt() {
     mv "$ca_path" "$STORE/$ca_name"
     ensure_link "$ca_name"
     sync_exclude "$(store_entries)"
+    if [ "$LOCAL" -eq 1 ]; then
+        if ! grep -Fqx -- "$ca_pat" "$ca_excl" 2>/dev/null; then
+            report "add $ca_pat to $ca_excl (local-only)"
+            mkdir -p "$(dirname "$ca_excl")"
+            printf '%s\n' "$ca_pat" >>"$ca_excl"
+        fi
+        release_lock
+        say "$PROG: adopted $ca_name as local-only — shared by this clone's worktrees, never pushed, and not backed up by the remote"
+        return 0
+    fi
     release_lock
     say "$PROG: adopted $ca_name — commit it with '$PROG sync'"
 }
@@ -763,6 +791,19 @@ cmd_adopt() {
 # --- sync (3.4) ------------------------------------------------------------
 
 store_git() { git -C "$STORE" "$@"; }
+
+# store_compare_ref — how the remote branch is known locally: the upstream, else
+# origin/<branch>. Prints nothing when neither exists (as of the last fetch).
+store_compare_ref() {
+    if store_git rev-parse --verify --quiet '@{u}' >/dev/null 2>&1; then
+        printf '@{u}\n'
+        return 0
+    fi
+    scr_b=$(store_git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+    if [ -n "$scr_b" ] && store_git show-ref --verify --quiet "refs/remotes/origin/$scr_b"; then
+        printf 'origin/%s\n' "$scr_b"
+    fi
+}
 
 store_branch() { store_git symbolic-ref --quiet --short HEAD 2>/dev/null || printf 'HEAD\n'; }
 
@@ -799,6 +840,57 @@ sync_rebase_stop() {
     warn "then finish it:          git -C '$STORE' rebase --continue"
     warn "or abandon it:           git -C '$STORE' rebase --abort"
     warn "run '$PROG sync' again only after the rebase has finished or been aborted"
+    exit 1
+}
+
+LIST_FAILED='lnd-artifacts: listing failed'
+
+# store_ignored — what the store's git ignores and does not track, as it exists
+# on disk, one path per line; an ignored directory collapses to one `name/` line.
+# (Not check-ignore: it reads its input as glob pathspecs, so it can never match
+# a literal `[draft]`.) A failed listing ends with the $LIST_FAILED line.
+store_ignored() {
+    { store_git ls-files -z --others --ignored --exclude-standard --directory ||
+        printf '\n%s\n' "$LIST_FAILED"; } | tr '\0' '\n'
+}
+
+# sync_guard <ref> — stop before integrating <ref> when it would write into
+# ignored local content (a local-only entry): git treats ignored files as
+# expendable and overwrites them without a word (L3).
+sync_guard() {
+    sg_ign=$(store_ignored)
+    case $sg_ign in
+        *"$LIST_FAILED"*) die "cannot list the store's ignored paths — the store is at $STORE" ;;
+    esac
+    if [ -z "$sg_ign" ]; then return 0; fi
+    if store_git rev-parse --verify --quiet HEAD >/dev/null 2>&1 &&
+        store_git merge-base HEAD "$1" >/dev/null 2>&1; then
+        sg_paths=$({ store_git diff -z --name-only "HEAD...$1" ||
+            printf '\n%s\n' "$LIST_FAILED"; } | tr '\0' '\n')
+    else
+        sg_paths=$({ store_git ls-tree -z -r --name-only "$1" ||
+            printf '\n%s\n' "$LIST_FAILED"; } | tr '\0' '\n')
+    fi
+    case $sg_paths in
+        *"$LIST_FAILED"*) die "cannot list the incoming changes in $1 — the store is at $STORE" ;;
+    esac
+    # A hit is an incoming path that is an ignored file or lies inside an
+    # ignored directory: exactly what git would overwrite or write into.
+    sg_hits=$(printf '%s\n' "$sg_paths" | SG_IGN=$sg_ign awk '
+        BEGIN { n = split(ENVIRON["SG_IGN"], ign, "\n") }
+        $0 != "" {
+            for (i = 1; i <= n; i++) {
+                p = ign[i]
+                if (p == "") continue
+                if ($0 == p || (substr(p, length(p)) == "/" && index($0, p) == 1)) { print; next }
+            }
+        }')
+    if [ -z "$sg_hits" ]; then return 0; fi
+    warn "sync stopped: $1 would write into paths this store keeps local-only:"
+    printf '%s\n' "$sg_hits" | sed 's/^/  /' >&2
+    warn "nothing was integrated or pushed (local commits stay unpushed); the store is at $STORE"
+    warn "either move the local content out of the way, or share it by removing its line"
+    warn "from $(store_git rev-parse --absolute-git-dir)/info/exclude — then run '$PROG sync' again"
     exit 1
 }
 
@@ -863,7 +955,8 @@ cmd_sync() {
             report "commit $cs_dirty change(s) with message: $cs_msg"
         fi
         if [ -n "$cs_up" ]; then
-            report "pull --rebase from $cs_up"
+            if [ "$cs_up_remote" != "." ]; then report "fetch $cs_up_remote"; fi
+            report "rebase onto $cs_up unless it would overwrite local-only paths"
             report "push if commits remain ahead of $cs_up"
         elif [ -n "$cs_remote" ]; then
             report "fetch $cs_remote"
@@ -901,12 +994,22 @@ cmd_sync() {
 
     if [ -n "$cs_up" ]; then
         cs_before=$(store_git rev-parse HEAD)
-        report "pull --rebase from $cs_up"
-        if ! store_git pull --rebase --quiet; then
+        # fetch + rebase rather than pull --rebase: the guard must check the very
+        # ref that gets integrated. Plain `rebase` uses the upstream with
+        # --fork-point, as pull --rebase does.
+        if [ "$cs_up_remote" != "." ]; then
+            report "fetch $cs_up_remote"
+            if ! store_git fetch --quiet "$cs_up_remote" "$cs_up_branch"; then
+                die "fetch from $cs_up_remote failed — the store is at $STORE"
+            fi
+        fi
+        sync_guard "$cs_up"
+        report "rebase onto $cs_up"
+        if ! store_git rebase --quiet; then
             if store_rebase_active || [ -n "$(store_git diff --name-only --diff-filter=U 2>/dev/null || true)" ]; then
                 sync_rebase_stop "rebase stopped in the artifact store: $STORE"
             fi
-            die "pull --rebase from $cs_up failed — the store is at $STORE"
+            die "rebase onto $cs_up failed — the store is at $STORE"
         fi
 
         cs_after=$(store_git rev-parse HEAD)
@@ -940,6 +1043,7 @@ cmd_sync() {
     cs_had_remote_branch=0
     if store_git show-ref --verify --quiet "$cs_remote_ref"; then
         cs_had_remote_branch=1
+        sync_guard "$cs_remote/$cs_remote_branch"
         if [ "$cs_has_head" -eq 0 ]; then
             report "initialize $cs_branch from $cs_remote/$cs_remote_branch"
             store_git reset --hard -q "$cs_remote/$cs_remote_branch"
@@ -1099,6 +1203,17 @@ cmd_status() {
         say "  exclude  : managed block MISSING from $EXCLUDE_FILE -> run '$PROG heal'"
     fi
 
+    # Ask git rather than parse the store's info/exclude: whatever the store
+    # ignores (global excludes included) is never synced, so say so (L4).
+    # First-level lines only; nested ignores inside a shared entry are not
+    # store entries.
+    if [ -n "$ct_entries" ]; then
+        ct_local=$(store_ignored | sed 's:/$::' | grep -v -e / -e "$LIST_FAILED" | grep . || true)
+        if [ -n "$ct_local" ]; then
+            say "  local    : $(printf '%s\n' "$ct_local" | paste -sd ' ' -) — never pushed; lost if the store is deleted or re-cloned"
+        fi
+    fi
+
     ct_q=$(
         cd "$WT_ROOT" 2>/dev/null || exit 0
         for ct_f in *.quarantined-* .*.quarantined-*; do
@@ -1238,6 +1353,9 @@ main() {
             --all-worktrees)
                 ALL_WORKTREES=1
                 ;;
+            --local)
+                LOCAL=1
+                ;;
             -m | --message)
                 if [ "$#" -lt 2 ]; then die "$1 needs a value"; fi
                 shift
@@ -1280,6 +1398,10 @@ main() {
     if [ -z "$VERB" ]; then
         usage >&2
         die "no verb given"
+    fi
+    if [ "$LOCAL" -eq 1 ] && [ "$VERB" != adopt ]; then
+        usage >&2
+        die "--local only applies to adopt"
     fi
 
     case $VERB in

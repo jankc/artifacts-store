@@ -57,6 +57,7 @@ its version.
 | "set up artifact management", "connect the artifact repo", "init lnd-artifacts" | `init <remote-url>` |
 | "my `.claude` symlink is gone", "links are broken", "new worktree has no artifacts" | `heal` |
 | "put `.opencode/` into the artifact repo", "adopt this folder" | `adopt <path>` |
+| "keep my `.claude/` out of the shared artifact repo", "personal, not for the team, but in every worktree" | `adopt --local <path>` |
 | "sync/push/commit the artifacts", "save my artifact changes" | `sync` |
 | "are the artifacts up to date?", "what is the artifact state?" | `status` |
 | "remove the artifact links", "unhook this project" | `detach` |
@@ -67,7 +68,8 @@ its version.
 "$ENGINE" init <remote-url>   # clone the artifact repo into the common dir and link it
 "$ENGINE" heal                # idempotent repair of links + exclude block
 "$ENGINE" adopt <path>        # move an untracked first-level path into the store
-"$ENGINE" sync [-m "msg"]     # commit -A, pull --rebase, push
+"$ENGINE" adopt --local <path>  # same, but never commit or push it (local-only)
+"$ENGINE" sync [-m "msg"]     # commit -A, fetch + rebase, push
 "$ENGINE" status              # read-only health report
 "$ENGINE" detach [--all-worktrees]  # remove links + exclude block, keep the store
 ```
@@ -104,7 +106,15 @@ Every mutating verb takes `--dry-run`.
    symlinked into the project root, so never create `README.md`, `.gitignore` or other
    housekeeping files at the store root. Tool-level ignores go inside the tool folder
    (e.g. `.claude/.gitignore`).
-9. **Edit artifacts through the project-root symlinks** (`.claude/…`, `openspec/…`) as
+9. **Local-only entries have no backup — say so.** `adopt --local` marks the entry in the
+   store's own `info/exclude` (`.git/lundegaard/.git/info/exclude`): every worktree of this
+   clone sees it, `sync` never pushes it, and deleting `.git` or re-cloning loses it. Tell
+   the user that when adopting. To share one later, delete its line from that file and
+   `sync`. Never `git rm --cached` a shared store entry to make it local-only — that
+   pushes a deletion to every teammate. If `sync` stops because the remote would write
+   into local-only paths, show the message verbatim and let the user choose: move their
+   copy out of the way, or share it.
+10. **Edit artifacts through the project-root symlinks** (`.claude/…`, `openspec/…`) as
    usual — they are the same files as in the store.
 
 ## Initialization dialogue
