@@ -2,17 +2,44 @@
 
 ## Purpose
 Materializes the artifact store into the host project: first-level entries of the store
-root are symlinked into the worktree root, ignored via a managed block in the common
+root whose names are on the engine's allow list are symlinked into the worktree root, ignored via a managed block in the common
 dir's `info/exclude`, and kept healthy across worktrees, `git clean`, and store changes.
 
 ## Requirements
 
+### Requirement: The engine carries a fixed allow list of store entry names
+
+The engine SHALL define one allow list of first-level store entry names: `.agents`,
+`.claude`, `.codex`, `.cursor`, `.gemini`, `.lnd-canon.json`, `.local`, `.opencode`,
+`.pi`, `.specify`, `.superset`, `.windsurf`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`,
+`docs`, `mise.toml`, `openspec`, `specs`. Names SHALL match exactly and case-sensitively.
+The list SHALL be part of the engine itself: no file in the store, the host repository
+or the user's configuration, and no environment variable, SHALL extend or shrink it.
+A read-only `allowed` verb SHALL print the list, one name per line, and change nothing.
+
+#### Scenario: allowed prints the list
+
+- **WHEN** `allowed` runs, inside or outside a project with a store
+- **THEN** it prints each allowed name on its own line, exits zero, and changes nothing
+  on disk
+
+#### Scenario: A store file cannot extend the list
+
+- **WHEN** the store root contains a file or directory with any name, including one
+  that looks like configuration
+- **THEN** the list printed by `allowed` is unchanged
+
 ### Requirement: First-level store entries are linked into the worktree root
 
 The engine SHALL create one symlink in the current worktree root for every first-level
-entry of the store root except `.git`, pointing at that entry inside the store. Both
-directories and regular files SHALL be linked. There is no manifest and no nested
-discovery: the store root listing IS the set of managed links.
+entry of the store root whose name is on the allow list, pointing at that entry inside
+the store. Both directories and regular files SHALL be linked. There is no manifest and
+no nested discovery: the store root listing, filtered by the allow list, IS the set of
+managed links. A first-level entry whose name is not on the allow list (for example a
+Finder `.DS_Store`) SHALL NOT be linked, SHALL NOT be listed in the managed exclude
+block, and a symlink to it left over from an earlier engine version SHALL be removed like
+the link of an entry that no longer exists. `heal` without `--quiet` SHALL name each
+skipped entry; `heal --quiet` SHALL NOT mention skipped entries.
 
 #### Scenario: Directories and files are linked
 
@@ -25,6 +52,33 @@ discovery: the store root listing IS the set of managed links.
 
 - **WHEN** `heal` runs
 - **THEN** no `.git`-named symlink to the store is created in the worktree root
+
+#### Scenario: An entry not on the allow list is skipped
+
+- **WHEN** the store root contains `.claude/` and `.DS_Store` and `heal` runs
+- **THEN** the worktree root gets a `.claude` symlink but no `.DS_Store` symlink, the
+  managed exclude block lists `.claude` but not `.DS_Store`, and the output names
+  `.DS_Store` as skipped
+
+#### Scenario: A real file at a skipped name is left alone
+
+- **WHEN** the store root contains `.DS_Store`, the worktree root already has a real
+  `.DS_Store` file, and `heal` runs
+- **THEN** the worktree's `.DS_Store` is byte-identical before and after and nothing is
+  quarantined
+
+#### Scenario: An old link to a skipped entry is removed
+
+- **WHEN** a worktree has a `.DS_Store` symlink into the store from an earlier engine
+  version and `heal` runs
+- **THEN** the symlink is removed, the store's `.DS_Store` is untouched, and the managed
+  exclude block no longer lists `.DS_Store`
+
+#### Scenario: Quiet heal says nothing about skipped entries
+
+- **WHEN** the store root contains `.DS_Store`, every allowed entry is already linked,
+  and `heal --quiet` runs
+- **THEN** it produces no output
 
 ### Requirement: Managed exclude block covers all links
 
@@ -78,7 +132,8 @@ existing path to `<name>.quarantined-<timestamp>` before linking, and SHALL repo
 quarantine loudly. The engine SHALL never delete or overwrite pre-existing content.
 Exception: a path tracked by the host repository SHALL NOT be moved at all — moving it
 would surface as a deletion in the customer repository. The engine SHALL warn, skip that
-entry (customer content wins), and `status` SHALL report it as a collision.
+entry (customer content wins), and `status` SHALL report it as a collision. Entries not
+on the allow list are never linked, so nothing is quarantined on their behalf.
 
 #### Scenario: Real directory at a managed name
 
@@ -89,8 +144,8 @@ entry (customer content wins), and `status` SHALL report it as a collision.
 
 #### Scenario: Store entry collides with tracked host content
 
-- **WHEN** `heal` runs and the store provides an entry whose name is tracked by the host
-  repository (e.g. `README.md`)
+- **WHEN** `heal` runs and the store provides an allowed entry whose name is tracked by
+  the host repository (e.g. `docs`)
 - **THEN** the tracked path is left untouched, the engine warns about the collision and
   skips that entry, and `status` reports it as a collision until the store entry is
   renamed or removed
@@ -100,7 +155,9 @@ entry (customer content wins), and `status` SHALL report it as a collision.
 `adopt <path>` SHALL move a first-level untracked (or ignored) path from the worktree
 root into the store root, create the managed symlink in its place, and update the
 exclude block. It SHALL refuse paths tracked by the host repository, paths outside the
-worktree root's first level, and names already present in the store.
+worktree root's first level, names already present in the store, and names not on the
+allow list. The refusal for a name not on the list SHALL say that the list is part of
+the plugin and grows through a plugin change.
 
 #### Scenario: Adopting an untracked directory
 
@@ -115,6 +172,13 @@ worktree root's first level, and names already present in the store.
 - **THEN** the engine exits non-zero explaining tracked content belongs to the host
   repository and nothing changes
 
+#### Scenario: A name not on the allow list is refused
+
+- **WHEN** `adopt notes` runs and `notes/` is an untracked real directory in the
+  worktree root
+- **THEN** the engine exits non-zero naming `notes` as not on the allow list, and
+  `notes/` stays where it was, the store is unchanged, and no link is created
+
 ### Requirement: detach removes links and exclude block, preserving the store
 
 `detach` SHALL remove all managed symlinks from the current worktree (and, when run from
@@ -127,17 +191,18 @@ block, and leave the store itself untouched, so a later `heal` fully restores th
 - **THEN** after `detach` no managed links or exclude block remain, the store is intact,
   and after `heal` links and exclude block are fully restored
 
-### Requirement: adopt --local keeps an adopted entry out of the store's history
+### Requirement: adopt --local keeps an allowed entry out of the store's history
 
-`adopt --local <path>` SHALL do everything `adopt <path>` does — same refusals, same move,
-same link, same host exclude-block update — and additionally mark the entry local-only
-in the store's own per-clone ignore rules (the store repository's `info/exclude`), so the
-store's git never tracks it. A local-only entry SHALL be linked, healed, quarantined
-around, and detached exactly like any other first-level store entry, in every worktree of
-the clone. `adopt --local` SHALL refuse a name that the store's remote branch already
-carries, because that entry is already shared and making it local would require deleting
-it for every other clone. Nothing about local-only entries SHALL be written to the host
-repository or committed to the store.
+`adopt --local <path>` SHALL do everything `adopt <path>` does — same refusals (the allow
+list included), same move, same link, same host exclude-block update — and additionally
+mark the entry local-only in the store's own per-clone ignore rules (the store
+repository's `info/exclude`), so the store's git never tracks it. A local-only entry
+SHALL be linked, healed, quarantined around, and detached exactly like any other allowed
+first-level store entry, in every worktree of the clone. `adopt --local` SHALL refuse a
+name that the store's remote branch already carries, because that entry is already
+shared and making it local would require deleting it for every other clone. Nothing
+about local-only entries SHALL be written to the host repository or committed to the
+store.
 
 #### Scenario: Adopting a directory as local-only
 
@@ -166,11 +231,11 @@ repository or committed to the store.
 - **THEN** the plan lists the move, the link, the host exclude-block entry and the store
   `info/exclude` entry, and nothing on disk changes
 
-#### Scenario: Names with gitignore metacharacters stay local-only
+#### Scenario: A name not on the allow list is refused with --local too
 
 - **WHEN** `adopt --local '[draft]'` runs for an untracked directory `[draft]/`
-- **THEN** the store's `info/exclude` gains a pattern matching exactly `[draft]`, the
-  store's git does not list it, and the host repository's status stays clean
+- **THEN** the engine exits non-zero naming `[draft]` as not on the allow list and
+  nothing changes
 
 #### Scenario: --local outside adopt is rejected
 

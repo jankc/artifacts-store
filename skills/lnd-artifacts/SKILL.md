@@ -6,8 +6,8 @@ description: Manage this project's AI artifacts (.claude/, openspec/, CLAUDE.md,
 # lnd-artifacts
 
 Artifacts live in a private git clone at `<git-common-dir>/lundegaard` (i.e.
-`.git/lundegaard` in the main worktree). Its first-level entries are symlinked into the
-project root and ignored through a managed block in `<git-common-dir>/info/exclude`, so
+`.git/lundegaard` in the main worktree). Its first-level entries whose names are on the
+engine's allow list are symlinked into the project root and ignored through a managed block in `<git-common-dir>/info/exclude`, so
 nothing ever reaches the customer's remote.
 
 The engine is a POSIX script. Resolve `$ENGINE` in this order, and stop at the first
@@ -61,6 +61,7 @@ its version.
 | "sync/push/commit the artifacts", "save my artifact changes" | `sync` |
 | "are the artifacts up to date?", "what is the artifact state?" | `status` |
 | "remove the artifact links", "unhook this project" | `detach` |
+| "which folders can go into the artifact repo?", "why isn't X linked?" | `allowed` |
 
 ## Verbs
 
@@ -69,9 +70,10 @@ its version.
 "$ENGINE" heal                # idempotent repair of links + exclude block
 "$ENGINE" adopt <path>        # move an untracked first-level path into the store
 "$ENGINE" adopt --local <path>  # same, but never commit or push it (local-only)
-"$ENGINE" sync [-m "msg"]     # commit -A, fetch + rebase, push
+"$ENGINE" sync [-m "msg"]     # commit allowed content, fetch + rebase, push
 "$ENGINE" status              # read-only health report
 "$ENGINE" detach [--all-worktrees]  # remove links + exclude block, keep the store
+"$ENGINE" allowed             # print the allow list of first-level store names
 ```
 
 Every mutating verb takes `--dry-run`.
@@ -96,16 +98,22 @@ Every mutating verb takes `--dry-run`.
    that the store has uncommitted or unpushed changes and suggesting `"$ENGINE" sync`.
    This is a sentence, not an action — rule 4 still holds, so wait for the user to ask.
    Claude Code also warns about this in a Stop hook; in runtimes without hooks this rule
-   is the only nudge the user gets.
+   is the only nudge the user gets. Entries on `status`'s `unlisted` line (a Finder
+   `.DS_Store`, a stray `README.md`) are not unsynced work: `sync` leaves them out on
+   purpose and they don't count as dirty, so don't suggest `sync` because of them.
 6. **Never work around a refusal.** If `adopt` refuses a tracked path, do not
-   `git rm --cached` it — explain that tracked content belongs to the customer repo.
+   `git rm --cached` it — explain that tracked content belongs to the customer repo. If it
+   refuses a name that is not on the allow list, do not move the content into the store by
+   hand or under another name — show the list (`"$ENGINE" allowed`) and explain that a new
+   name means a change to the plugin, which then reaches every project.
 7. **Report quarantines loudly.** `heal`/`adopt` rename anything foreign found at a
    managed name to `<name>.quarantined-<timestamp>`. Tell the user what was quarantined
    and let them decide whether to merge the contents into the store or delete it.
-8. **Keep the store root payload-only.** Every first-level entry of the store gets
-   symlinked into the project root, so never create `README.md`, `.gitignore` or other
-   housekeeping files at the store root. Tool-level ignores go inside the tool folder
-   (e.g. `.claude/.gitignore`).
+8. **Keep the store root payload-only.** Only names on the allow list are linked or
+   synced, so never create `README.md`, `.gitignore` or other housekeeping files at the
+   store root — they would do nothing. Tool-level ignores go inside the tool folder (e.g.
+   `.claude/.gitignore`); personal files like `.claude/settings.local.json` stay out
+   through such a committed `.gitignore`.
 9. **Local-only entries have no backup — say so.** `adopt --local` marks the entry in the
    store's own `info/exclude` (`.git/lundegaard/.git/info/exclude`): every worktree of this
    clone sees it, `sync` never pushes it, and deleting `.git` or re-cloning loses it. Tell
@@ -136,7 +144,8 @@ Every mutating verb takes `--dry-run`.
 3. `"$ENGINE" init <url> --dry-run`, show the plan.
 4. `"$ENGINE" init <url>`, then report which links were created.
 5. If the store was empty, offer to `adopt` the artifact folders that already exist in
-   the project (`.claude`, `openspec`, `CLAUDE.md`, …) and then `sync`.
+   the project (`.claude`, `openspec`, `CLAUDE.md`, …) and then `sync`. Only names on the
+   allow list can be adopted.
 
 ## Troubleshooting
 

@@ -31,11 +31,22 @@ Proč právě `.git/`:
 Hlavní přednost návrhu je, že **nic není třeba konfigurovat ani udržovat**. Všechno, co plugin potřebuje vědět, plyne z polohy souborů:
 
 - **Kde je store.** Vždy `<git common dir>/lundegaard`. Cesta se nikde neukládá, spočítá se z aktuálního adresáře přes `git rev-parse --git-common-dir`. Proto stejný výpočet funguje v hlavním klonu, v každém worktree i ve skriptu bez pluginu.
-- **Co se linkuje.** Neexistuje seznam „tyto složky patří do projektu“. Manifestem je **první úroveň artefaktového repa**: cokoli leží v kořeni storu (kromě `.git`), to dostane symlink v kořeni projektu, se stejným jménem. Přidat artefakt znamená vytvořit složku nebo soubor ve storu, nic víc. Odstranit ho znamená smazat ho ve storu; `heal` osiřelý symlink uklidí.
+- **Co se linkuje.** Manifestem je **první úroveň artefaktového repa**: každá položka v kořeni storu, jejíž jméno je na seznamu povolených jmen (viz níže), dostane symlink v kořeni projektu, se stejným jménem. Přidat artefakt znamená vytvořit složku nebo soubor ve storu, nic víc. Odstranit ho znamená smazat ho ve storu; `heal` osiřelý symlink uklidí.
 - **Co se ignoruje.** Blok v `info/exclude` se generuje z téhož seznamu. Jeden vstup (obsah kořene storu), dva výstupy (symlinky, exclude), které se nemohou rozejít.
 - **Kam symlinky ukazují.** Vždy relativně na `.git/lundegaard/<jméno>`. Symlinky vypadají v každém projektu i u každého kolegy stejně, takže se dají kdykoli smazat a znovu odvodit — `heal` je jen „přepočítej stav z obsahu storu“.
 
 Důsledek: neexistuje konfigurační soubor, který by se mohl rozejít s realitou, zapomenout commitnout nebo omylem dostat do zákaznického repa. Jediné, co uživatel kdy zadá, je URL artefaktového repa při `init`.
+
+### Seznam povolených jmen
+
+Store má pojmout jakýkoli artefakt, ale ne úplně cokoli. Engine proto nese pevný **seznam povolených jmen na první úrovni storu**: `.agents`, `.claude`, `.codex`, `.cursor`, `.gemini`, `.lnd-canon.json`, `.local`, `.opencode`, `.pi`, `.specify`, `.superset`, `.windsurf`, `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `docs`, `mise.toml`, `openspec`, `specs`. Seznam nehlídá obsah, jen pod jakým jménem v kořeni smí artefakt existovat; obecná položka typu `docs/` pokryje věci bez vlastní kategorie. Vypíše ho příkaz `allowed`.
+
+- **Seznam žije v pluginu, přímo v enginu.** Jeho rozšíření je merge request do pluginu (review, verze), a protože se engine vendoruje a `heal` ho obnovuje, nová verze seznamu se sama rozšíří do všech projektů. Seznam ve storu by cíl nesplnil, každý by si ho rozšířil sám.
+- **Bez per-projektových výjimek.** Žádný konfigurační soubor ani proměnná prostředí. Jakmile by výjimky existovaly, kurátorování ztrácí smysl.
+- **Jméno mimo seznam nemá žádný účinek.** Typicky `.DS_Store`, který do storu přidá Finder. `heal` ho nelinkuje (a symlink ze starší verze enginu odstraní), `sync` ho necommitne, nepočítá se jako necommitnutá změna pro `sync`, `status` ani hook Stop, `adopt` ho odmítne a `status` ho vypíše na řádku `unlisted`.
+- **Oproti původnímu plánu** dvě změny, obě proto, aby smetí nemělo účinek, místo aby se jen hlásilo: `heal` jméno mimo seznam přeskočí (plán: dál linkovat a jen hlásit) a `sync` ho z commitu vynechá a řekne to (plán: odmítnout commit bez `--force`). Obsah, který store pod takovým jménem už verzuje, se synchronizuje dál.
+- **Osobní soubory uvnitř povolené položky** (např. `.claude/settings.local.json`) drží mimo store `.gitignore` commitnutý ve storu (např. `.claude/.gitignore`); platí pro celý tým.
+- **Druhá linie na serveru** (odloženo): CI v artefaktovém repu by zavolalo `allowed` a ověřilo první úroveň proti témuž seznamu, aby ruční `git push` kontrolu neobešel.
 
 ## Z čeho se plugin skládá
 
@@ -58,10 +69,11 @@ Závislosti: jen POSIX shell, git a coreutils. Engine **nikdy nesahá na zákazn
 | ------------------- | ------------------------------------------------------------------------------------------------------ |
 | `init <remote-url>` | Naklonuje artefaktové repo do `.git/lundegaard` a vytvoří symlinky. Jednorázově na projekt.            |
 | `heal`              | Idempotentní oprava: doplní chybějící symlinky, opraví špatné, odstraní osiřelé, přepíše exclude blok. |
-| `adopt <cesta>`     | Přesune existující neverzovanou složku/soubor do storu a symlinkuje zpět.                              |
-| `sync`              | Commitne vše ve storu, `pull --rebase`, push. Jediný způsob publikace.                                 |
+| `adopt <cesta>`     | Přesune existující neverzovanou složku/soubor do storu a symlinkuje zpět. Jen povolená jména.          |
+| `sync`              | Commitne povolený obsah storu, `pull --rebase`, push. Jediný způsob publikace.                         |
 | `status`            | Přehled: existence storu, počet necommitnutých/nepushnutých změn, zdraví symlinků. Nic nemění.         |
 | `detach`            | Odstraní symlinky a exclude blok. Store zůstává; `heal` vše vrátí.                                     |
+| `allowed`           | Vypíše seznam povolených jmen, jedno na řádek. Nic nemění.                                             |
 
 
 Každý měnící příkaz umí `--dry-run`.
@@ -176,15 +188,6 @@ acme-artifacts/
 
 Varianta s jednou git větví pro každý repozitář je zamítnuta kvůli nutnosti   mergovat každou změnu sdílených artefaktů do N větví. Další alternativy (sparse-checkout, submoduly, manifest) byly zváženy a nepřinášejí nic navíc oproti podadresářům.
 
-### Rozšíření: kurátorovaný seznam povolených artefaktů
-
-Store má pojmout jakýkoli artefakt, ale ne úplně cokoli od kohokoli. Řešením je **allowlist jmen na první úrovni storu** (`.claude`, `openspec`, `CLAUDE.md`, `docs`, …), navazující na pravidlo „první úroveň = manifest“. Seznam nehlídá obsah, jen pod jakým jménem v kořeni smí artefakt existovat; obecná položka typu `docs/` pokryje věci bez vlastní kategorie.
-
-- **Seznam žije v pluginu, přímo v enginu.** Jeho rozšíření je merge request do pluginu (review, verze), a protože se engine vendoruje a `heal` ho obnovuje, nová verze seznamu se sama rozšíří do všech projektů. Seznam ve storu by cíl nesplnil, každý by si ho rozšířil sám.
-- **Vynucení:** `adopt` odmítne jméno mimo seznam, `sync` odmítne commitnout store s nepovolenou položkou (bez `--force`), `status` a hook Stop varují, `heal` položku dál linkuje, jen ji nahlásí.
-- **Druhá linie na serveru:** CI v artefaktovém repu zavolá read-only příkaz enginu a ověří první úroveň proti témuž seznamu, aby ruční `git push` kontrolu neobešel.
-- **Bez per-projektových výjimek.** Jakmile by existovaly, kurátorování ztrácí smysl.
-
 ### Další menší rozšíření
 
 - **`status` napříč projekty** — jeden příkaz vypíše nesynchronizované story všech projektů (přirozené s centrálním úložištěm).
@@ -197,5 +200,5 @@ Store má pojmout jakýkoli artefakt, ale ne úplně cokoli od kohokoli. Řešen
 - **Zálohy přeskakující `.git/` store nezálohují.** Zálohou je artefaktový remote.
 - **Vyhledávače (rg, grep) nesledují symlinky** — použít `rg -L`.
 - **Worktrees sdílejí necommitnutý stav** — lokálně vyhrává poslední zápis, konflikty se ukážou při `sync`.
-- Store je **jen payload**: v jeho kořeni nesmí být `README.md` ani `.gitignore`, protože všechno z kořene se symlinkuje do projektu.
+- Store je **jen payload**: `README.md` nebo `.gitignore` v jeho kořeni nejsou na seznamu povolených jmen, takže se nelinkují a `status` je vypíše jako `unlisted`.
 

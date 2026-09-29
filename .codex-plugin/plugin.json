@@ -1,7 +1,7 @@
 {
   "name": "lnd-artifacts",
   "description": "Per-project AI artifact transport: keeps .claude/, openspec/, CLAUDE.md and friends in a private artifact repo cloned into the host project's git common dir, symlinked into the project root and never committed to the customer remote.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "Lundegaard"
   },

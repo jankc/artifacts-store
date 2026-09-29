@@ -9,10 +9,11 @@ honestly — never automatically.
 
 ### Requirement: sync commits, rebases, and pushes the store
 
-`sync` SHALL stage and commit all changes in the store (with a default message that can
-be overridden), pull from the store remote with rebase, and push. All Git operations
-SHALL target the store repository only; the host repository SHALL never be read from or
-written to by `sync` beyond resolving the store location.
+`sync` SHALL stage and commit all changes in the store that the allow list and the
+store's ignore rules permit (with a default message that can be overridden), pull from
+the store remote with rebase, and push. All Git operations SHALL target the store
+repository only; the host repository SHALL never be read from or written to by `sync`
+beyond resolving the store location.
 
 #### Scenario: Clean sync
 
@@ -34,11 +35,13 @@ written to by `sync` beyond resolving the store location.
 ### Requirement: status reports store and link health
 
 `status` SHALL report, without changing anything: whether a store exists, dirty file
-count, unpushed and behind-remote commit counts when a usable upstream or remote-tracking
-comparison exists (and an explicit `unknown` state otherwise), per-worktree link health
-(missing, wrong-target, or quarantine leftovers) for the current worktree, and every
-first-level store entry that the store's git ignores, marked as local-only and not backed
-up by the remote.
+count (excluding untracked entries not on the allow list), unpushed and behind-remote
+commit counts when a usable upstream or remote-tracking comparison exists (and an
+explicit `unknown` state otherwise), per-worktree link health (missing, wrong-target, or
+quarantine leftovers) for the current worktree, every first-level store entry that the
+store's git ignores, marked as local-only and not backed up by the remote, and every
+first-level store entry whose name is not on the allow list, marked as neither linked nor
+synced.
 
 #### Scenario: Unsynced work is visible
 
@@ -62,12 +65,21 @@ up by the remote.
 - **THEN** the output lists `.claude` as local-only and states that local-only entries are
   not pushed and are lost if the store is deleted or re-cloned
 
+#### Scenario: Entries not on the allow list are listed
+
+- **WHEN** `status` runs and the store root holds `.DS_Store` and `README.md`
+- **THEN** the output lists both as not on the allow list, stating that they are not
+  linked and that untracked ones are not synced, and does not count them among the
+  managed links
+
 ### Requirement: sync never commits local-only content
 
 `sync` SHALL commit only paths the store's git does not ignore. Content ignored by the
-store — local-only entries created by `adopt --local`, and any pattern the user added to
-the store's `info/exclude` — SHALL never be staged, committed, or pushed, and SHALL NOT
-count as dirty for `sync`, `status`, or the Stop-hook warning.
+store — local-only entries created by `adopt --local`, any pattern the user added to
+the store's `info/exclude`, and any rule in a `.gitignore` committed inside a store entry
+(for example `.claude/.gitignore`), which applies to every clone of the project — SHALL
+never be staged, committed, or pushed, and SHALL NOT count as dirty for `sync`,
+`status`, or the Stop-hook warning.
 
 #### Scenario: Local-only edits are not synced
 
@@ -80,6 +92,14 @@ count as dirty for `sync`, `status`, or the Stop-hook warning.
 - **WHEN** a file under shared `openspec/` and a file under local-only `.claude/` are both
   edited and `sync` runs
 - **THEN** the pushed commit contains the `openspec/` change and nothing under `.claude/`
+
+#### Scenario: A committed .gitignore in the store keeps personal files out
+
+- **WHEN** the store tracks `.claude/.gitignore` listing `settings.local.json`, a file
+  `.claude/settings.local.json` exists, no global git ignore rule covers it, and `sync`
+  runs
+- **THEN** nothing under `.claude/settings.local.json` is committed or pushed, and
+  `status` does not count it as dirty
 
 ### Requirement: sync refuses to overwrite local-only content
 
@@ -102,11 +122,43 @@ local-only content or dropping its ignore rule, then runs `sync` again.
 
 #### Scenario: Names with glob metacharacters are guarded literally
 
-- **WHEN** `[draft]` is local-only in this clone and another clone pushes `[draft]/f`
-- **THEN** `sync` exits non-zero naming `[draft]/f` and the local `[draft]/f` is unchanged
+- **WHEN** the store's `info/exclude` ignores `/openspec/[draft]/` in this clone, and
+  another clone pushes `openspec/[draft]/f`
+- **THEN** `sync` exits non-zero naming `openspec/[draft]/f` and the local
+  `openspec/[draft]/f` is unchanged
 
 #### Scenario: Unrelated remote changes still integrate
 
 - **WHEN** `.claude` is local-only and the remote only carries new commits under
   `openspec/`
 - **THEN** `sync` rebases onto them and pushes as usual
+
+### Requirement: sync leaves out untracked entries that are not on the allow list
+
+`sync` SHALL stage untracked content only under first-level names on the allow list, plus
+every change (modification, deletion, new file) under paths the store's git already
+tracks, whatever their first-level name. An untracked first-level entry whose name is not
+on the allow list, and anything inside it, SHALL never be staged, committed, or pushed,
+and SHALL NOT count as dirty for `sync`, `status`, or the Stop-hook warning. When `sync`
+leaves such an entry out, it SHALL name it and say it is not on the allow list; it SHALL
+still commit and push everything else and SHALL NOT exit non-zero because of it.
+
+#### Scenario: A Finder file in the store root is not committed
+
+- **WHEN** the store root holds an untracked `.DS_Store` and a modified file under
+  `openspec/`, and `sync` runs
+- **THEN** the pushed commit contains the `openspec/` change and no `.DS_Store`, and the
+  output names `.DS_Store` as left out because it is not on the allow list
+
+#### Scenario: Junk alone is not unsynced work
+
+- **WHEN** the only untracked or changed content in the store is `.DS_Store` at its root
+- **THEN** `sync` creates no commit and reports the store is already in sync (after
+  naming `.DS_Store` as left out), and `status` reports 0 dirty files
+
+#### Scenario: Content the store already tracks keeps syncing
+
+- **WHEN** the store's history already tracks `notes/todo.md` (committed before the
+  allow list existed), the file is modified, and `sync` runs
+- **THEN** the pushed commit contains the `notes/todo.md` change, and `status` names
+  `notes` as not on the allow list

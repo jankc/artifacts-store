@@ -5,8 +5,8 @@ A Claude Code and Codex plugin that versions your AI tool artifacts (`.claude/`,
 the customer's repository.
 
 The artifact repo is cloned into the host project's git **common dir**
-(`.git/lundegaard`), and every first-level entry of its root is symlinked into the
-project root. Those symlinks are ignored through a managed block in
+(`.git/lundegaard`), and every first-level entry of its root whose name is on the
+[allow list](#the-allow-list) is symlinked into the project root. Those symlinks are ignored through a managed block in
 `<git-common-dir>/info/exclude`, so the customer repo's `git status` stays clean and the
 artifacts are structurally incapable of leaking into the customer remote.
 
@@ -60,13 +60,47 @@ runnable copy of the engine, so outside a session `$ENGINE` is simply
 | --- | --- |
 | `init <remote-url>` | Clone the artifact repo into `<git-common-dir>/lundegaard`, then link. Refuses if a store already exists. |
 | `heal` | Idempotent self-repair: create missing links, fix wrong ones, drop orphans, rewrite the exclude block. |
-| `adopt <path>` | Move an untracked first-level path into the store and link it back. |
+| `adopt <path>` | Move an untracked first-level path into the store and link it back. Only names on the allow list. |
 | `adopt --local <path>` | Same, but the entry stays out of the store's history: shared by this clone's worktrees, never pushed. |
-| `sync` | Commit everything in the store, rebase on the remote, push. Explicit, never automatic. |
-| `status` | Store presence, dirty/unpushed counts, link health, quarantine leftovers. Never changes anything. |
+| `sync` | Commit the store's allowed content, rebase on the remote, push. Explicit, never automatic. |
+| `status` | Store presence, dirty/unpushed counts, link health, local-only and unlisted entries, quarantine leftovers. Never changes anything. |
 | `detach` | Remove the managed links and the exclude block. The store is left untouched — `heal` restores everything. |
+| `allowed` | Print the allow list, one name per line. Needs no repository. |
 
 Every mutating verb accepts `--dry-run` and prints the full plan without touching disk.
+
+### The allow list
+
+Only these first-level store names are linked and synced:
+
+```
+.agents  .claude  .codex  .cursor  .gemini  .lnd-canon.json  .local  .opencode  .pi
+.specify  .superset  .windsurf  AGENTS.md  CLAUDE.md  GEMINI.md  docs  mise.toml
+openspec  specs
+```
+
+The list is part of the engine (`$ENGINE allowed` prints it). No file in the store or the
+project, and no environment variable, changes it; a new name is a plugin release, which
+the vendored engine then carries to every project. Anything else at the store root — a
+Finder `.DS_Store`, a stray `README.md` — has no effect:
+
+- `heal` does not link it (a plain `heal` prints `skip <name> (not on the allow list)`;
+  the SessionStart `heal --quiet` says nothing), and removes a link to it left over from
+  an older engine.
+- `sync` never commits it while the store's git doesn't track it, names it as left out,
+  and commits everything else. Content the store already tracks under such a name keeps
+  syncing.
+- It doesn't count as dirty for `sync`, `status` or the Stop hook.
+- `adopt` refuses it.
+- `status` lists it:
+
+  ```
+    unlisted : .DS_Store README.md — not on the allow list; not linked, untracked content not synced
+  ```
+
+Personal files *inside* a listed entry (for example `.claude/settings.local.json`) stay
+out through a `.gitignore` committed in the store, such as `.claude/.gitignore`, which
+applies to the whole team.
 
 ### Local-only artifacts
 
@@ -222,11 +256,11 @@ Three things compensate, in order of strength:
 
 ## Conventions and constraints
 
-- **The store root is payload-only.** Every first-level entry except `.git` gets
-  symlinked into the customer's project root, so the artifact repo must not carry
-  housekeeping files at its root — no `README.md`, no root `.gitignore`. Per-tool runtime
-  ignores belong inside the tool folder (e.g. `.claude/.gitignore`). `status` warns when
-  it spots such an entry.
+- **The store root is payload-only.** Only names on the allow list are linked into the
+  customer's project root, so housekeeping files at the store root (`README.md`, a root
+  `.gitignore`) are pointless: they are never linked, and `status` lists them as
+  unlisted. Per-tool runtime ignores belong inside the tool folder (e.g.
+  `.claude/.gitignore`).
 - **One artifact repo = one customer project.** No shared or multi-project stores.
 - **Pre-existing paths are quarantined, never deleted.** A real `.claude/` directory
   sitting where a link belongs is renamed `.claude.quarantined-<timestamp>` and reported

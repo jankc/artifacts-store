@@ -101,7 +101,8 @@ Design.md D1–D8 are the settled decisions. Extra rationale worth preserving:
 - **Store root is payload-only**: a README.md or root .gitignore in the artifact repo
   would get symlinked into the customer repo root. Same discipline as ailien's
   `hosts/<key>/`; per-tool runtime ignores live inside each tool folder
-  (e.g. `.claude/.gitignore`). No skip-list until it hurts (skip `.git` only).
+  (e.g. `.claude/.gitignore`). No skip-list until it hurts (skip `.git` only) — it hurt,
+  see the allow-list bullet below.
 - **Relative symlinks, recomputed per worktree at heal time**: survive moving the
   clone; linked worktrees get longer `../..`-style paths since their roots live
   elsewhere on disk. Validation always compares RESOLVED targets, not link text.
@@ -127,6 +128,18 @@ Design.md D1–D8 are the settled decisions. Extra rationale worth preserving:
   Don't use it as an ignore oracle for arbitrary names. Likewise every gitignore line the
   engine writes goes through `ignore_pattern` (escapes `[ ] \ * ? # !` and a trailing
   space); an unescaped `/[draft]` silently fails to ignore the entry.
+- **A fixed allow list of first-level names, inside the engine** (`add-store-allowlist`,
+  2026-09-29). Trigger: Finder dropped `.DS_Store` into a JMHZ store root; heal linked it
+  into every worktree and quarantined the main worktree's own `.DS_Store`. The list is a
+  string constant in the engine so the vendored copy carries it and a new name is a
+  plugin release; a file in the store would let each project extend it. Unlike the
+  original plan in `docs/jak-plugin-funguje.md`, names off the list have *no effect*
+  instead of being reported: heal skips them (and unlinks old links), and sync stages by
+  exclusion (`add -A -- . ':(exclude,literal)<name>'…` then `add -u`) so their untracked
+  content is left out while content the store already tracks keeps syncing. Positive
+  pathspecs were rejected: `git add` exits 1 for an ignored explicit path. Personal files
+  inside listed entries stay out via a `.gitignore` committed in the store, not an engine
+  list.
 
 ## 5. Verified runtime facts
 

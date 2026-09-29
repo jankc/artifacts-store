@@ -20,7 +20,25 @@ esac
 STORE="$COMMON/lundegaard"
 [ -d "$STORE" ] || exit 0
 
-DIRTY=$(git -C "$STORE" status --porcelain --untracked-files=all 2>/dev/null | grep -c . || true)
+# Count dirty work the way sync stages it: tracked changes anywhere, plus
+# untracked content under names on the engine's allow list. Without the engine
+# fall back to counting everything — a spurious warning beats a missed one.
+ENGINE="$(dirname "$0")/../scripts/lnd-artifacts.sh"
+if ALLOWED=$(sh "$ENGINE" allowed 2>/dev/null) && [ -n "$ALLOWED" ]; then
+    set -- -- .
+    for ENTRY in "$STORE"/* "$STORE"/.[!.]* "$STORE"/..?*; do
+        [ -e "$ENTRY" ] || [ -L "$ENTRY" ] || continue
+        NAME=${ENTRY##*/}
+        [ "$NAME" != .git ] || continue
+        printf '%s\n' "$ALLOWED" | grep -Fqx -- "$NAME" && continue
+        set -- "$@" ":(exclude,literal)$NAME"
+    done
+    TRACKED=$(git -C "$STORE" status --porcelain --untracked-files=no 2>/dev/null | grep -c . || true)
+    UNTRACKED=$(git -C "$STORE" status --porcelain --untracked-files=all "$@" 2>/dev/null | grep -c '^??' || true)
+    DIRTY=$((TRACKED + UNTRACKED))
+else
+    DIRTY=$(git -C "$STORE" status --porcelain --untracked-files=all 2>/dev/null | grep -c . || true)
+fi
 BRANCH=$(git -C "$STORE" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
 UPSTREAM=""
 if [ -n "$BRANCH" ]; then

@@ -3,12 +3,12 @@
 This repository IS a Claude Code plugin (one skill + one read-only `/lnd-artifacts:help`
 command + one POSIX script + two hooks) that manages per-project AI artifacts: a private
 artifact repo cloned into the host project's git common dir (`.git/lundegaard`), with its
-first-level entries symlinked into the project root and ignored via a managed block in
+allow-listed first-level entries symlinked into the project root and ignored via a managed block in
 `.git/info/exclude`.
 
 ## Current state
 
-- **No active changes.** All five are implemented, verified and archived under
+- **No active changes.** All six are implemented, verified and archived under
   `openspec/changes/archive/`; the merged behaviour lives in `openspec/specs/`
   (artifact-store, artifact-linking, artifact-sync, artifact-bootstrap,
   codex-runtime, plugin-integration). Read those specs first — they are the current
@@ -25,6 +25,10 @@ first-level entries symlinked into the project root and ignored via a managed bl
   5. `add-local-only-artifacts` — `adopt --local` via the store's own `info/exclude`,
      the sync overwrite guard, status `local` line (L1–L5), plus escaped gitignore
      lines in both exclude files.
+  6. `add-store-allowlist` — a fixed allow list of first-level store names in the
+     engine (D1–D7 in its design.md): heal skips and unlinks other names, sync leaves
+     their untracked content out, adopt refuses them, status lists them as `unlisted`,
+     new read-only `allowed` verb for the Stop hook.
 - Those decisions are settled — don't relitigate them.
 - For any change, read `proposal.md` → `design.md` → `specs/*/spec.md` → `tasks.md`,
   in that order.

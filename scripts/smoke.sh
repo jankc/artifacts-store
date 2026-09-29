@@ -183,6 +183,8 @@ git init -q -b main "$HOST"
 mkdir -p "$HOST/src"
 printf 'app\n' >"$HOST/src/app.txt"
 printf 'readme\n' >"$HOST/README.md"
+mkdir -p "$HOST/docs"
+printf 'host docs\n' >"$HOST/docs/guide.md"
 git -C "$HOST" add -A
 git -C "$HOST" commit -qm "host project"
 printf '# user rule\n*.log' >>"$HOST/.git/info/exclude"
@@ -345,14 +347,14 @@ git -C "$EMPTY_HOST" commit -q --allow-empty -m host
 (cd "$EMPTY_HOST" && engine init "$EMPTY_REMOTE") >/dev/null
 check_not "empty artifact store starts without HEAD" git -C "$EMPTY_HOST/.git/lundegaard" rev-parse --verify HEAD
 git init -q -b main "$FIRST_SEED"
-printf 'first\n' >"$FIRST_SEED/FIRST.md"
+printf 'first\n' >"$FIRST_SEED/AGENTS.md"
 git -C "$FIRST_SEED" add -A
 git -C "$FIRST_SEED" commit -qm "first artifact commit"
 git -C "$FIRST_SEED" remote add origin "$EMPTY_REMOTE"
 git -C "$FIRST_SEED" push -q -u origin main:published
 git -C "$EMPTY_HOST/.git/lundegaard" config branch.main.merge refs/heads/published
 FIRST_SYNC=$(cd "$EMPTY_HOST" && engine sync)
-eq "unborn sync receives the first remote artifact" "first" "$(cat "$EMPTY_HOST/.git/lundegaard/FIRST.md")"
+eq "unborn sync receives the first remote artifact" "first" "$(cat "$EMPTY_HOST/.git/lundegaard/AGENTS.md")"
 eq "unborn sync preserves the configured remote branch" "origin/published" \
     "$(git -C "$EMPTY_HOST/.git/lundegaard" rev-parse --abbrev-ref --symbolic-full-name '@{u}')"
 case $FIRST_SYNC in
@@ -360,7 +362,7 @@ case $FIRST_SYNC in
     *) bad "unborn sync should report configured initialization (got: $FIRST_SYNC)" ;;
 esac
 (cd "$EMPTY_HOST" && engine heal >/dev/null)
-check "heal links the first remote artifact" is_link_to "$EMPTY_HOST/FIRST.md" "$EMPTY_HOST/.git/lundegaard/FIRST.md"
+check "heal links the first remote artifact" is_link_to "$EMPTY_HOST/AGENTS.md" "$EMPTY_HOST/.git/lundegaard/AGENTS.md"
 host_clean "$EMPTY_HOST" "after first remote commit"
 
 # --- heal ------------------------------------------------------------------
@@ -587,6 +589,22 @@ check_not "tracked path refused" engine adopt src
 check_not "nested path refused" engine adopt src/app.txt
 check_not "already-managed link refused" engine adopt .claude
 check "tracked path untouched" test -f "$HOST/src/app.txt"
+case "$(engine adopt docs 2>&1 || true)" in
+    *"tracked by the host repository"*) ok "tracked allowed name refused as host content" ;;
+    *) bad "adopt docs should be refused as tracked host content" ;;
+esac
+mkdir -p "$HOST/notes"
+printf 'n\n' >"$HOST/notes/todo.md"
+ADOPT_LIST_BEFORE=$(ls -A "$STORE" | LC_ALL=C sort)
+if NOTES_OUT=$(engine adopt notes 2>&1); then bad "adopt notes should exit non-zero"; else ok "adopt notes exits non-zero"; fi
+case $NOTES_OUT in
+    *"'notes' is not on the allow list"*) ok "the refusal names notes and the allow list" ;;
+    *) bad "the refusal should name notes (got: $NOTES_OUT)" ;;
+esac
+check "refused notes/ stays in place" test -f "$HOST/notes/todo.md"
+check_not "refused notes/ is not linked" test -L "$HOST/notes"
+eq "store unchanged by the refusal" "$ADOPT_LIST_BEFORE" "$(ls -A "$STORE" | LC_ALL=C sort)"
+rm -r "${HOST:?}/notes"
 
 step "adopted work syncs"
 engine sync >/dev/null
@@ -612,18 +630,60 @@ printf 'from-worktree\n' >"$WT/.claude/settings.json"
 eq "main worktree sees the edit" "from-worktree" "$(cat "$HOST/.claude/settings.json")"
 
 step "a removed store entry is unlinked in every worktree"
-printf 'probe\n' >"$STORE/probe.md"
+printf 'probe\n' >"$STORE/GEMINI.md"
 (cd "$HOST" && engine heal >/dev/null)
 (cd "$WT" && engine heal >/dev/null)
-check "worktree link probe.md" is_link_to "$WT/probe.md" "$STORE/probe.md"
+check "worktree link GEMINI.md" is_link_to "$WT/GEMINI.md" "$STORE/GEMINI.md"
 ln -s ../elsewhere/probe-foreign.md "$WT/probe-foreign.md"
-rm "$STORE/probe.md"
+rm "$STORE/GEMINI.md"
 (cd "$HOST" && engine heal >/dev/null) # rewrites the shared block first
 (cd "$WT" && engine heal >/dev/null)
-check_not "main worktree link probe.md removed" test -L "$HOST/probe.md"
-check_not "worktree link probe.md removed after the block was rewritten" test -L "$WT/probe.md"
+check_not "main worktree link GEMINI.md removed" test -L "$HOST/GEMINI.md"
+check_not "worktree link GEMINI.md removed after the block was rewritten" test -L "$WT/GEMINI.md"
 check "foreign symlink outside the store left alone" test -L "$WT/probe-foreign.md"
 rm "$WT/probe-foreign.md"
+
+step "allowed prints the fixed list, whatever the store holds"
+ALLOWED_WANT='.agents .claude .codex .cursor .gemini .lnd-canon.json .local .opencode .pi .specify .superset .windsurf AGENTS.md CLAUDE.md GEMINI.md docs mise.toml openspec specs'
+eq "allowed prints the 19 names" "$ALLOWED_WANT" "$(engine allowed | paste -sd ' ' -)"
+if NOGIT_ALLOWED=$(cd "$WORK" && engine allowed); then NOGIT_ALLOWED_RC=0; else NOGIT_ALLOWED_RC=$?; fi
+eq "allowed works outside a git repo" "0 $ALLOWED_WANT" "$NOGIT_ALLOWED_RC $(printf '%s\n' "$NOGIT_ALLOWED" | paste -sd ' ' -)"
+printf 'notes\n' >"$STORE/.lnd-allowed"
+eq "a store file cannot extend the list" "$ALLOWED_WANT" "$(engine allowed | paste -sd ' ' -)"
+rm "$STORE/.lnd-allowed"
+
+step "an entry not on the allow list is skipped, a real file there left alone"
+printf 'store finder\n' >"$STORE/.DS_Store"
+printf 'host finder\n' >"$HOST/.DS_Store"
+cp "$HOST/.DS_Store" "$WORK/ds.before"
+SKIP_HEAL=$(engine heal)
+case $SKIP_HEAL in
+    *"skip .DS_Store (not on the allow list)"*) ok "plain heal names the skipped entry" ;;
+    *) bad "plain heal should name .DS_Store as skipped (got: $SKIP_HEAL)" ;;
+esac
+check_not ".DS_Store is not linked" test -L "$HOST/.DS_Store"
+check "the worktree's own .DS_Store is byte-identical" cmp -s "$WORK/ds.before" "$HOST/.DS_Store"
+check_not "nothing quarantined for a skipped entry" sh -c 'ls -d "$1"/.DS_Store.quarantined-* >/dev/null 2>&1' _ "$HOST"
+check_not ".DS_Store is not in the managed block" grep -Fq "/.DS_Store" "$HOST/.git/info/exclude"
+eq "heal --quiet says nothing about skipped entries" "" "$(engine heal --quiet 2>&1)"
+rm "$HOST/.DS_Store"
+
+step "an old link to an entry off the list is removed in every worktree"
+ln -s "$STORE/.DS_Store" "$HOST/.DS_Store"
+ln -s "$STORE/.DS_Store" "$WT/.DS_Store"
+cp "$HOST/.git/info/exclude" "$WORK/exclude.current"
+awk '{ print } /^# regenerated by lnd-artifacts/ { print "/.DS_Store" }' "$HOST/.git/info/exclude" >"$WORK/exclude.old"
+cat "$WORK/exclude.old" >"$HOST/.git/info/exclude"
+(cd "$HOST" && engine heal >/dev/null)
+(cd "$WT" && engine heal >/dev/null)
+check_not "old .DS_Store link removed in the main worktree" test -L "$HOST/.DS_Store"
+check_not "old .DS_Store link removed in the linked worktree" test -L "$WT/.DS_Store"
+eq "the store's .DS_Store is untouched" "store finder" "$(cat "$STORE/.DS_Store")"
+check_not "the managed block no longer lists .DS_Store" grep -Fq "/.DS_Store" "$HOST/.git/info/exclude"
+host_clean "$HOST" "after dropping an old unlisted link"
+host_clean "$WT" "worktree after dropping an old unlisted link"
+cp "$WORK/exclude.current" "$HOST/.git/info/exclude" # awk terminated the user's last line
+rm "$STORE/.DS_Store"
 
 # --- agentless bootstrap (artifact-bootstrap) ------------------------------
 
@@ -783,33 +843,119 @@ eq "Stop mutated nothing" "1" "$(git -C "$STORE" status --porcelain | grep -c .)
 (cd "$WORK" && eq "SessionStart silent outside a git repo" "" "$(sh "$HOOKS/session-start.sh")")
 engine sync >/dev/null
 
+# --- entries off the allow list (add-store-allowlist) -----------------------
+
+step "junk alone in the store root is not unsynced work"
+printf 'finder\n' >"$STORE/.DS_Store"
+case "$(engine status)" in
+    *"dirty    : 0 file(s) uncommitted"*) ok "status reports 0 dirty files with only .DS_Store" ;;
+    *) bad "status should report 0 dirty files with only .DS_Store" ;;
+esac
+JUNK_HEAD=$(git -C "$STORE" rev-parse HEAD)
+JUNK_SYNC=$(engine sync)
+case $JUNK_SYNC in
+    *"left out .DS_Store — not on the allow list"*"already in sync"*) ok "sync names .DS_Store as left out and reports already in sync" ;;
+    *) bad "sync should leave .DS_Store out and report already in sync (got: $JUNK_SYNC)" ;;
+esac
+eq "junk alone creates no commit" "$JUNK_HEAD" "$(git -C "$STORE" rev-parse HEAD)"
+eq "Stop stays silent with only .DS_Store" "" "$(sh "$HOOKS/stop.sh")"
+eq "SessionStart stays silent with .DS_Store in a healthy store" "" "$(sh "$HOOKS/session-start.sh")"
+
+step "sync commits allowed changes and leaves the junk out"
+printf 'project v2\n' >"$HOST/openspec/project.md"
+case "$(sh "$HOOKS/stop.sh")" in
+    *"1 uncommitted file(s)"*) ok "Stop still warns about an openspec/ edit beside .DS_Store" ;;
+    *) bad "Stop should warn about exactly one uncommitted file" ;;
+esac
+LEFT_SYNC=$(engine sync)
+case $LEFT_SYNC in
+    *"left out .DS_Store"*"pushed"*) ok "sync names .DS_Store and pushes the rest" ;;
+    *) bad "sync should name .DS_Store and push (got: $LEFT_SYNC)" ;;
+esac
+eq "remote has the openspec/ change" "project v2" "$(git -C "$REMOTE" show main:openspec/project.md)"
+eq "remote has no .DS_Store" "" "$(git -C "$REMOTE" ls-tree main -- .DS_Store)"
+eq "only .DS_Store is left untracked" "?? .DS_Store" "$(git -C "$STORE" status --porcelain --untracked-files=all)"
+
+step "content the store already tracks under a name off the list keeps syncing"
+mkdir -p "$STORE/notes"
+printf 'v1\n' >"$STORE/notes/todo.md"
+git -C "$STORE" add notes/todo.md
+git -C "$STORE" commit -qm "notes from before the allow list"
+engine sync >/dev/null
+printf 'v2\n' >"$STORE/notes/todo.md"
+printf 'new\n' >"$STORE/notes/new.md"
+case "$(engine status)" in
+    *"dirty    : 1 file(s) uncommitted"*) ok "status counts the tracked change, not the untracked file beside it" ;;
+    *) bad "status should count only notes/todo.md as dirty" ;;
+esac
+engine sync >/dev/null
+eq "remote has the tracked notes/todo.md change" "v2" "$(git -C "$REMOTE" show main:notes/todo.md)"
+check_not "untracked notes/new.md is not pushed" git -C "$REMOTE" cat-file -e main:notes/new.md
+case "$(engine status)" in
+    *"unlisted : .DS_Store notes — "*) ok "status names notes as unlisted" ;;
+    *) bad "status should name notes as unlisted" ;;
+esac
+check_not "notes is not linked" test -L "$HOST/notes"
+git -C "$STORE" rm -rq notes
+git -C "$STORE" commit -qm "drop notes"
+rm -r "${STORE:?}/notes"
+engine sync >/dev/null
+
+step "a committed .gitignore in the store keeps personal files out"
+printf 'settings.local.json\n' >"$HOST/.claude/.gitignore"
+engine sync >/dev/null
+printf '{"mine":true}\n' >"$HOST/.claude/settings.local.json"
+case "$(engine status)" in
+    *"dirty    : 0 file(s) uncommitted"*) ok "status does not count a file the store's .gitignore covers" ;;
+    *) bad "status should not count .claude/settings.local.json" ;;
+esac
+engine sync >/dev/null
+check_not "settings.local.json is not pushed" git -C "$REMOTE" cat-file -e main:.claude/settings.local.json
+rm "$HOST/.claude/settings.local.json" "$STORE/.DS_Store"
+
 # --- store hygiene warning -------------------------------------------------
 
-step "status warns about a housekeeping file at the store root"
+step "status lists store entries not on the allow list"
 printf 'nope\n' >"$STORE/README.md"
-case "$(engine status)" in
-    *"payload-only"*) ok "status warns about README.md at the store root" ;;
-    *) bad "status should warn about README.md at the store root" ;;
+printf 'finder\n' >"$STORE/.DS_Store"
+HYG_STATUS=$(engine status)
+case $HYG_STATUS in
+    *"unlisted : .DS_Store README.md — not on the allow list; not linked, untracked content not synced"*)
+        ok "status lists README.md and .DS_Store as unlisted"
+        ;;
+    *) bad "status should list README.md and .DS_Store as unlisted (got: $HYG_STATUS)" ;;
 esac
+case $HYG_STATUS in
+    *"links    : 4 managed entry(ies)"*) ok "unlisted entries are not counted as managed links" ;;
+    *) bad "unlisted entries should not count as links (got: $HYG_STATUS)" ;;
+esac
+case $HYG_STATUS in
+    *"COLLISION    README.md"*) bad "a README.md off the list must not collide with the host's" ;;
+    *) ok "a README.md off the list does not collide with the host's" ;;
+esac
+eq "the host's README.md is untouched" "readme" "$(cat "$HOST/README.md")"
+rm "$STORE/README.md" "$STORE/.DS_Store"
 
 step "a store entry colliding with tracked host content is refused, not quarantined"
+mkdir -p "$STORE/docs"
+printf 'store docs\n' >"$STORE/docs/guide.md"
 COLLOUT=$(engine heal 2>&1 || true)
 case $COLLOUT in
-    *"skipped 'README.md'"*) ok "heal refuses to move tracked host content" ;;
+    *"skipped 'docs'"*) ok "heal refuses to move tracked host content" ;;
     *) bad "heal should refuse to move tracked host content (got: $COLLOUT)" ;;
 esac
-eq "tracked README.md still holds the host's content" "readme" "$(cat "$HOST/README.md")"
-check_not "no quarantine of tracked content" sh -c 'ls -d "$1"/README.md.quarantined-* >/dev/null 2>&1' _ "$HOST"
+eq "tracked docs/ still holds the host's content" "host docs" "$(cat "$HOST/docs/guide.md")"
+check_not "no quarantine of tracked content" sh -c 'ls -d "$1"/docs.quarantined-* >/dev/null 2>&1' _ "$HOST"
 host_clean "$HOST" "after a tracked-content collision"
 case "$(engine status)" in
-    *"COLLISION    README.md"*) ok "status reports the collision" ;;
+    *"COLLISION    docs"*) ok "status reports the collision" ;;
     *) bad "status should report the collision" ;;
 esac
-rm "$STORE/README.md"
+rm -rf "$STORE/docs"
 engine heal >/dev/null
-check_not "README.md link removed once the store entry is gone" test -L "$HOST/README.md"
-check "the host's own README.md is untouched" test -f "$HOST/README.md"
-eq "host README.md content intact" "readme" "$(cat "$HOST/README.md")"
+check_not "docs link removed once the store entry is gone" test -L "$HOST/docs"
+check "the host's own docs/ is untouched" test -d "$HOST/docs"
+eq "host docs content intact" "host docs" "$(cat "$HOST/docs/guide.md")"
 host_clean "$HOST" "after removing a store entry"
 
 # --- local-only entries (add-local-only-artifacts) ---------------------------
@@ -821,20 +967,20 @@ drop_store_excl() { # drop_store_excl <line>
 }
 
 step "adopt --local keeps an entry out of the store's history"
-mkdir -p "$HOST/.private"
-printf 'mine\n' >"$HOST/.private/notes.md"
-LOCAL_DRY=$(engine adopt .private --local --dry-run)
+mkdir -p "$HOST/.local"
+printf 'mine\n' >"$HOST/.local/notes.md"
+LOCAL_DRY=$(engine adopt .local --local --dry-run)
 case $LOCAL_DRY in
-    *"add /.private to $STORE_EXCL (local-only)"*) ok "dry-run adopt --local plans the store exclude line" ;;
+    *"add /.local to $STORE_EXCL (local-only)"*) ok "dry-run adopt --local plans the store exclude line" ;;
     *) bad "dry-run adopt --local should plan the store exclude line (got: $LOCAL_DRY)" ;;
 esac
-check_not "dry-run adopt --local did not populate the store" test -e "$STORE/.private"
-check_not "dry-run adopt --local wrote no store exclude line" grep -Fqx "/.private" "$STORE_EXCL"
-engine adopt .private --local >/dev/null
-check "local-only entry is linked back" is_link_to "$HOST/.private" "$STORE/.private"
-check "local-only entry is in the host exclude block" grep -Fqx "/.private" "$HOST/.git/info/exclude"
-check "local-only entry is in the store's info/exclude" grep -Fqx "/.private" "$STORE_EXCL"
-eq "store git does not see the local-only entry" "" "$(git -C "$STORE" status --porcelain --untracked-files=all -- .private)"
+check_not "dry-run adopt --local did not populate the store" test -e "$STORE/.local"
+check_not "dry-run adopt --local wrote no store exclude line" grep -Fqx "/.local" "$STORE_EXCL"
+engine adopt .local --local >/dev/null
+check "local-only entry is linked back" is_link_to "$HOST/.local" "$STORE/.local"
+check "local-only entry is in the host exclude block" grep -Fqx "/.local" "$HOST/.git/info/exclude"
+check "local-only entry is in the store's info/exclude" grep -Fqx "/.local" "$STORE_EXCL"
+eq "store git does not see the local-only entry" "" "$(git -C "$STORE" status --porcelain --untracked-files=all -- .local)"
 host_clean "$HOST" "after adopt --local"
 check_not "--local is refused outside adopt" engine status --local
 
@@ -842,8 +988,8 @@ step "local-only edits never sync; shared edits beside them do"
 printf 'shared\n' >"$HOST/openspec/shared.md"
 engine sync >/dev/null
 eq "remote has the shared edit" "shared" "$(git -C "$REMOTE" show main:openspec/shared.md)"
-eq "remote has nothing under .private" "" "$(git -C "$REMOTE" ls-tree main -- .private)"
-printf 'mine-2\n' >>"$HOST/.private/notes.md"
+eq "remote has nothing under .local" "" "$(git -C "$REMOTE" ls-tree main -- .local)"
+printf 'mine-2\n' >>"$HOST/.local/notes.md"
 case "$(engine sync)" in
     *"already in sync"*) ok "a local-only edit alone leaves nothing to sync" ;;
     *) bad "a local-only edit alone should leave nothing to sync" ;;
@@ -858,81 +1004,88 @@ eq "unrelated remote changes integrate beside a local-only entry" "unrelated" "$
 
 step "local-only entries reach every worktree and show in status"
 (cd "$WT" && engine heal >/dev/null)
-check "worktree link .private" is_link_to "$WT/.private" "$STORE/.private"
+check "worktree link .local" is_link_to "$WT/.local" "$STORE/.local"
 host_clean "$WT" "worktree after heal with a local-only entry"
 case "$(engine status)" in
-    *"local    : .private — never pushed"*) ok "status lists the local-only entry" ;;
-    *) bad "status should list .private as local-only" ;;
+    *"local    : .local — never pushed"*) ok "status lists the local-only entry" ;;
+    *) bad "status should list .local as local-only" ;;
 esac
 
-step "names with gitignore metacharacters stay local and invisible"
+step "adopt --local refuses a name not on the allow list"
 mkdir -p "$HOST/[draft]"
 printf 'd\n' >"$HOST/[draft]/f"
-engine adopt '[draft]' --local >/dev/null
-check "store exclude line is escaped" grep -Fqx '/\[draft\]' "$STORE_EXCL"
-eq "store git does not see [draft]" "" "$(git -C "$STORE" status --porcelain --untracked-files=all)"
-host_clean "$HOST" "after adopting [draft]"
-case "$(engine status)" in
-    *"local    : .private [draft] — never pushed"*) ok "status lists [draft] as local-only" ;;
-    *) bad "status should list [draft] as local-only" ;;
+DRAFT_LIST_BEFORE=$(ls -A "$STORE" | LC_ALL=C sort)
+if DRAFT_ADOPT=$(engine adopt '[draft]' --local 2>&1); then bad "adopt --local [draft] should exit non-zero"; else ok "adopt --local [draft] exits non-zero"; fi
+case $DRAFT_ADOPT in
+    *"'[draft]' is not on the allow list"*) ok "the --local refusal names [draft]" ;;
+    *) bad "the --local refusal should name [draft] (got: $DRAFT_ADOPT)" ;;
 esac
+check "refused [draft]/ stays in place" test -f "$HOST/[draft]/f"
+eq "store unchanged by the --local refusal" "$DRAFT_LIST_BEFORE" "$(ls -A "$STORE" | LC_ALL=C sort)"
+check_not "no store exclude line for [draft]" grep -Fq 'draft' "$STORE_EXCL"
+rm -r "${HOST:?}/[draft]"
+
+step "the sync guard matches names with glob metacharacters literally"
+mkdir -p "$STORE/openspec/[draft]"
+printf 'd\n' >"$STORE/openspec/[draft]/f"
+printf '%s\n' '/openspec/\[draft\]/' >>"$STORE_EXCL"
+eq "store git does not see openspec/[draft]" "" "$(git -C "$STORE" status --porcelain --untracked-files=all)"
 git -C "$SEED" pull -q --rebase
-mkdir -p "$SEED/[draft]"
-printf 'theirs\n' >"$SEED/[draft]/f"
+mkdir -p "$SEED/openspec/[draft]"
+printf 'theirs\n' >"$SEED/openspec/[draft]/f"
 git -C "$SEED" add -A
-git -C "$SEED" commit -qm "a teammate shares [draft]"
+git -C "$SEED" commit -qm "a teammate shares openspec/[draft]"
 git -C "$SEED" push -q
 DRAFT_RC=0
 DRAFT_OUT=$(engine sync 2>&1) || DRAFT_RC=$?
-check "sync stops on a pushed [draft]/f" test "$DRAFT_RC" -ne 0
+check "sync stops on a pushed openspec/[draft]/f" test "$DRAFT_RC" -ne 0
 case $DRAFT_OUT in
-    *"[draft]/f"*) ok "the guard names [draft]/f literally" ;;
-    *) bad "the guard should name [draft]/f (got: $DRAFT_OUT)" ;;
+    *"openspec/[draft]/f"*) ok "the guard names openspec/[draft]/f literally" ;;
+    *) bad "the guard should name openspec/[draft]/f (got: $DRAFT_OUT)" ;;
 esac
-eq "local [draft]/f untouched" "d" "$(cat "$HOST/[draft]/f")"
-git -C "$SEED" rm -rq '[draft]'
-git -C "$SEED" commit -qm "drop [draft]"
+eq "local openspec/[draft]/f untouched" "d" "$(cat "$STORE/openspec/[draft]/f")"
+git -C "$SEED" rm -rq 'openspec/[draft]'
+git -C "$SEED" commit -qm "drop openspec/[draft]"
 git -C "$SEED" push -q
-rm -rf "$STORE/[draft]"
-drop_store_excl '/\[draft\]'
-engine heal >/dev/null
-check_not "[draft] link removed after its store entry went" test -L "$HOST/[draft]"
+rm -r "${STORE:?}/openspec/[draft]"
+drop_store_excl '/openspec/\[draft\]/'
+engine sync >/dev/null
 
 step "adopt --local refuses a name already shared on the remote"
 git -C "$SEED" pull -q --rebase
-mkdir -p "$SEED/.teamdir"
-printf 'team\n' >"$SEED/.teamdir/x.md"
+mkdir -p "$SEED/.cursor"
+printf 'team\n' >"$SEED/.cursor/x.md"
 git -C "$SEED" add -A
 git -C "$SEED" commit -qm "team dir"
 git -C "$SEED" push -q
 git -C "$STORE" fetch -q origin
-mkdir -p "$HOST/.teamdir"
-printf 'mine\n' >"$HOST/.teamdir/x.md"
-check_not "shared name refused" engine adopt .teamdir --local
-check "refused entry left in place" test -d "$HOST/.teamdir/"
-check_not "refused entry not moved into the store" test -e "$STORE/.teamdir"
-rm -rf "$HOST/.teamdir"
-git -C "$SEED" rm -rq .teamdir
+mkdir -p "$HOST/.cursor"
+printf 'mine\n' >"$HOST/.cursor/x.md"
+check_not "shared name refused" engine adopt .cursor --local
+check "refused entry left in place" test -d "$HOST/.cursor/"
+check_not "refused entry not moved into the store" test -e "$STORE/.cursor"
+rm -rf "$HOST/.cursor"
+git -C "$SEED" rm -rq .cursor
 git -C "$SEED" commit -qm "drop team dir"
 git -C "$SEED" push -q
 
 step "sync stops before the remote overwrites local-only content"
-mkdir -p "$SEED/.private"
-printf 'theirs\n' >"$SEED/.private/notes.md"
+mkdir -p "$SEED/.local"
+printf 'theirs\n' >"$SEED/.local/notes.md"
 git -C "$SEED" add -A
-git -C "$SEED" commit -qm "a teammate shares .private"
+git -C "$SEED" commit -qm "a teammate shares .local"
 git -C "$SEED" push -q
-LOCAL_BEFORE=$(cat "$HOST/.private/notes.md")
+LOCAL_BEFORE=$(cat "$HOST/.local/notes.md")
 REMOTE_HEAD=$(git -C "$REMOTE" rev-parse main)
 printf 'shared-2\n' >"$HOST/openspec/shared.md"
 GUARD_RC=0
 GUARD_OUT=$(engine sync 2>&1) || GUARD_RC=$?
 check "guarded sync exits non-zero" test "$GUARD_RC" -ne 0
 case $GUARD_OUT in
-    *"local-only"*".private/notes.md"*) ok "guarded sync names the local-only path" ;;
-    *) bad "guarded sync should name .private/notes.md (got: $GUARD_OUT)" ;;
+    *"local-only"*".local/notes.md"*) ok "guarded sync names the local-only path" ;;
+    *) bad "guarded sync should name .local/notes.md (got: $GUARD_OUT)" ;;
 esac
-eq "local-only file untouched" "$LOCAL_BEFORE" "$(cat "$HOST/.private/notes.md")"
+eq "local-only file untouched" "$LOCAL_BEFORE" "$(cat "$HOST/.local/notes.md")"
 eq "nothing pushed" "$REMOTE_HEAD" "$(git -C "$REMOTE" rev-parse main)"
 eq "the run's local commit stays, unpushed" "1" "$(git -C "$STORE" rev-list --count '@{u}..HEAD')"
 check_not "no rebase left behind" test -d "$STORE/.git/rebase-merge"
@@ -940,20 +1093,20 @@ check_not "lock released" test -d "$HOST/.git/lundegaard.lock"
 host_clean "$HOST" "after a guarded sync"
 
 step "dropping the local-only content lets sync through"
-rm -rf "$STORE/.private"
-drop_store_excl "/.private"
+rm -rf "$STORE/.local"
+drop_store_excl "/.local"
 engine sync >/dev/null
-eq "the teammate's file arrived" "theirs" "$(cat "$STORE/.private/notes.md")"
+eq "the teammate's file arrived" "theirs" "$(cat "$STORE/.local/notes.md")"
 eq "remote has the held-back commit" "shared-2" "$(git -C "$REMOTE" show main:openspec/shared.md)"
 git -C "$SEED" pull -q --rebase
-git -C "$SEED" rm -rq .private
-git -C "$SEED" commit -qm "drop .private"
+git -C "$SEED" rm -rq .local
+git -C "$SEED" commit -qm "drop .local"
 git -C "$SEED" push -q
 engine sync >/dev/null
 engine heal >/dev/null
 (cd "$WT" && engine heal >/dev/null)
-check_not "fixture restored: no .private link" test -L "$HOST/.private"
-check_not "fixture restored: no worktree .private link" test -L "$WT/.private"
+check_not "fixture restored: no .local link" test -L "$HOST/.local"
+check_not "fixture restored: no worktree .local link" test -L "$WT/.local"
 host_clean "$HOST" "after restoring the local-only fixture"
 
 # --- detach / heal round-trip ------------------------------------------------
