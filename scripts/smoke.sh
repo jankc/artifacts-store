@@ -913,6 +913,18 @@ engine sync >/dev/null
 check_not "settings.local.json is not pushed" git -C "$REMOTE" cat-file -e main:.claude/settings.local.json
 rm "$HOST/.claude/settings.local.json" "$STORE/.DS_Store"
 
+step "a whitelist .gitignore shares only one subfolder"
+printf '/*\n!/.gitignore\n!/skills/\n' >"$HOST/.claude/.gitignore"
+mkdir -p "$HOST/.claude/skills/foo" "$HOST/.claude/agents"
+printf 'skill\n' >"$HOST/.claude/skills/foo/SKILL.md"
+printf 'agent\n' >"$HOST/.claude/agents/me.md"
+engine sync >/dev/null
+eq "the whitelisted subfolder is pushed" "skill" "$(git -C "$REMOTE" show main:.claude/skills/foo/SKILL.md)"
+check_not "content outside the whitelist is not pushed" git -C "$REMOTE" cat-file -e main:.claude/agents/me.md
+printf 'settings.local.json\n' >"$HOST/.claude/.gitignore"
+rm -r "$HOST/.claude/agents"
+engine sync >/dev/null
+
 # --- store hygiene warning -------------------------------------------------
 
 step "status lists store entries not on the allow list"

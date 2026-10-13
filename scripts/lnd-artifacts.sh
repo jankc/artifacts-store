@@ -975,8 +975,9 @@ sync_guard() {
     warn "sync stopped: $1 would write into paths this store keeps local-only:"
     printf '%s\n' "$sg_hits" | sed 's/^/  /' >&2
     warn "nothing was integrated or pushed (local commits stay unpushed); the store is at $STORE"
-    warn "either move the local content out of the way, or share it by removing its line"
-    warn "from $(store_git rev-parse --absolute-git-dir)/info/exclude — then run '$PROG sync' again"
+    warn "either move the local content out of the way, or share it by narrowing the ignore rule"
+    warn "that covers it (in $(store_git rev-parse --absolute-git-dir)/info/exclude or a .gitignore"
+    warn "inside the entry) — then run '$PROG sync' again"
     exit 1
 }
 
